@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: light dark;
+    color: rgba(0, 0, 0, 0.87);
+    background-color: #ffffff;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    margin: 0;
+    display: flex;
+    place-items: center;
+    min-width: 320px;
+    min-height: 100vh;
+}
+
+/* Custom Component Overrides */
+.premium-tree .ant-tree-node-content-wrapper {
+    border-radius: 4px;
+    padding: 6px 8px !important;
+    margin: 2px 0;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.premium-tree .ant-tree-node-selected {
+    background-color: #10B981 !important;
+    color: white !important;
+    font-weight: 600;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #F1F5F9;
+    border-radius: 10px;
+}
+
+.ant-btn-primary {
+    box-shadow: none !important;
+}
+
+.studio-table .ant-table-thead > tr > th {
+    background: transparent;
+    font-size: 10px;
+    font-weight: 800;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid #F8FAFC;
+    padding: 20px 24px;
+}
+
+.studio-table .ant-table-tbody > tr > td {
+    padding: 16px 24px;
+    border-bottom: 1px solid #F8FAFC;
+}

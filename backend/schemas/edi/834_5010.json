@@ -1,0 +1,10 @@
+
+{
+  "type": "EDI",
+  "transaction": "834",
+  "version": "5010",
+  "loops": [
+    { "id": "ISA", "segments": ["ISA06","ISA08"] },
+    { "id": "2000", "segments": ["NM103","NM104","DTP03"] }
+  ]
+}

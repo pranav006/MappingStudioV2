@@ -1,0 +1,17 @@
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/controller/EdiSchemaController.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ai/AiTrainerService.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ai/AiLearningRepository.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/model/ProjectEntity.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/model/Mapping.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/edi/EdiSchemaRegistry.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ai/AiController.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/export/ExcelExportService.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/mapping/MappingEntity.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/repository/MappingRepository.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ai/AiSuggestionEngine.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/mapping/MappingController.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/export/ExportController.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/BackendApplication.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ems/EmsGenerator.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/config/WebConfig.java
+/Users/pranavsanalkumar/Downloads/mappingstudio-real-final/backend/src/main/java/com/mappingstudio/ai/AiLearningEntity.java

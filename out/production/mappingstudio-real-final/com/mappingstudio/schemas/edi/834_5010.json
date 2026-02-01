@@ -1,0 +1,39 @@
+{
+  "type": "EDI",
+  "transaction": "834",
+  "version": "5010",
+  "loops": [
+    {
+      "id": "ISA",
+      "name": "Interchange Header",
+      "segments": [
+        {
+          "id": "ISA06",
+          "name": "Sender ID"
+        },
+        {
+          "id": "ISA08",
+          "name": "Receiver ID"
+        }
+      ]
+    },
+    {
+      "id": "2000",
+      "name": "Member Loop",
+      "segments": [
+        {
+          "id": "NM103",
+          "name": "Last Name"
+        },
+        {
+          "id": "NM104",
+          "name": "First Name"
+        },
+        {
+          "id": "DTP03",
+          "name": "DOB"
+        }
+      ]
+    }
+  ]
+}
