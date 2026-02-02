@@ -21,7 +21,17 @@ public class MappingController {
     }
 
     @GetMapping("/{project}")
-    public List<MappingEntity> load(@PathVariable String project) {
+    public List<MappingEntity> loadByName(@PathVariable String project) {
         return repo.findByProjectName(project);
+    }
+
+    @GetMapping("/project/{projectId}")
+    public List<MappingEntity> loadByProjectId(@PathVariable Long projectId) {
+        return repo.findByProjectId(projectId);
+    }
+
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id) {
+        repo.deleteById(id);
     }
 }

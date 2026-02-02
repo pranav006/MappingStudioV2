@@ -8,4 +8,6 @@ public interface MappingRepository
         extends JpaRepository<MappingEntity, Long> {
 
     List<MappingEntity> findByProjectName(String projectName);
+    List<MappingEntity> findByProjectId(Long projectId);
+    void deleteByProjectId(Long projectId);
 }

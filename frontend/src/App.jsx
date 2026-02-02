@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     Layout,
     Button,
@@ -9,7 +9,6 @@ import {
     Space,
     ConfigProvider,
     message,
-    Avatar,
     Table,
     Tag,
     Modal,
@@ -17,16 +16,17 @@ import {
     Empty,
     Card,
     Typography,
-    Divider
+    Divider,
+    Tooltip
 } from 'antd';
 import {
     PlusOutlined,
+    ArrowLeftOutlined,
     ArrowRightOutlined,
     DatabaseOutlined,
     DeleteOutlined,
     FileTextOutlined,
     RobotOutlined,
-    HomeOutlined,
     CheckCircleFilled,
     AppstoreOutlined,
     ThunderboltOutlined,
@@ -38,7 +38,9 @@ import {
     GlobalOutlined,
     SearchOutlined,
     SwapOutlined,
-    FileExcelOutlined
+    FileExcelOutlined,
+    CloudUploadOutlined,
+    ToolOutlined
 } from '@ant-design/icons';
 
 const { Header, Content } = Layout;
@@ -59,7 +61,7 @@ const STYLES = {
     mainWrapper: "h-screen w-full flex bg-white overflow-hidden",
     sidebar: "bg-white border-r border-slate-100 h-full overflow-hidden flex flex-col relative z-20",
     panelTitle: "text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400 px-6 py-5 border-b border-slate-50 flex items-center justify-between bg-white",
-    premiumHeader: "bg-white border-b border-slate-100 px-8 flex items-center justify-between h-16 shrink-0 sticky top-0 z-50",
+    premiumHeader: "bg-white border-b border-slate-100 px-8 flex items-center justify-between h-16 shrink-0 sticky top-0 z-50 relative",
     glassCard: "bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all duration-300",
 };
 
@@ -151,208 +153,582 @@ const TARGET_CANONICAL_TREE = [
     }
 ];
 
+const ROLE_KEY = 'mappingstudio_role';
+
 export default function App() {
+    const [userRole, setUserRole] = useState(() => {
+        try {
+            const r = localStorage.getItem(ROLE_KEY);
+            return r === 'dev' ? 'dev' : 'ba';
+        } catch { return 'ba'; }
+    });
     const [view, setView] = useState('dashboard');
     const [projects, setProjects] = useState([]);
     const [currentProject, setCurrentProject] = useState(null);
     const [mappings, setMappings] = useState([]);
     const [selectedSourceNode, setSelectedSourceNode] = useState(null);
     const [selectedTargetNode, setSelectedTargetNode] = useState(null);
+    const [sourcePanelWidth, setSourcePanelWidth] = useState(320);
+    const [targetPanelWidth, setTargetPanelWidth] = useState(320);
+    const [isResizing, setIsResizing] = useState(false);
+    const resizingSource = useRef(false);
+    const resizingTarget = useRef(false);
+    const mainWrapperRef = useRef(null);
+    const resizeStartX = useRef(0);
+    const resizeStartSourceWidth = useRef(320);
+    const resizeStartTargetWidth = useRef(320);
 
-    const handleCreateProject = (newProject) => {
-        const projectWithId = {
-            ...newProject,
-            id: Date.now(),
-            status: 'Draft',
-            updated: 'Just now',
-            coverage: 0
+    const MIN_PANEL = 200;
+    const MAX_PANEL = 560;
+
+    const startResizeSource = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingSource.current = true;
+        resizingTarget.current = false;
+        resizeStartX.current = e.clientX;
+        resizeStartSourceWidth.current = sourcePanelWidth;
+        setIsResizing(true);
+        if (e.target instanceof HTMLElement && typeof e.pointerId === 'number') {
+            e.target.setPointerCapture(e.pointerId);
+        }
+    }, [sourcePanelWidth]);
+
+    const startResizeTarget = useCallback((e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        resizingSource.current = false;
+        resizingTarget.current = true;
+        resizeStartX.current = e.clientX;
+        resizeStartTargetWidth.current = targetPanelWidth;
+        setIsResizing(true);
+        if (e.target instanceof HTMLElement && typeof e.pointerId === 'number') {
+            e.target.setPointerCapture(e.pointerId);
+        }
+    }, [targetPanelWidth]);
+
+    useEffect(() => {
+        if (!isResizing) return;
+        const onMove = (e) => {
+            const x = e.clientX ?? (e.touches?.[0]?.clientX);
+            if (x == null) return;
+            if (resizingSource.current) {
+                const delta = x - resizeStartX.current;
+                const newWidth = Math.min(MAX_PANEL, Math.max(MIN_PANEL, resizeStartSourceWidth.current + delta));
+                setSourcePanelWidth(newWidth);
+            }
+            if (resizingTarget.current) {
+                const delta = resizeStartX.current - x;
+                const newWidth = Math.min(MAX_PANEL, Math.max(MIN_PANEL, resizeStartTargetWidth.current + delta));
+                setTargetPanelWidth(newWidth);
+            }
         };
-        setProjects(prev => [projectWithId, ...prev]);
-        setCurrentProject(projectWithId);
-        setMappings([]);
-        setView('workspace');
+        const onUp = () => {
+            resizingSource.current = false;
+            resizingTarget.current = false;
+            setIsResizing(false);
+        };
+        document.addEventListener('pointermove', onMove, { capture: true, passive: false });
+        document.addEventListener('pointerup', onUp, { capture: true });
+        document.addEventListener('mousemove', onMove, { capture: true, passive: false });
+        document.addEventListener('mouseup', onUp, { capture: true });
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        document.body.style.pointerEvents = 'auto';
+        return () => {
+            document.removeEventListener('pointermove', onMove, { capture: true });
+            document.removeEventListener('pointerup', onUp, { capture: true });
+            document.removeEventListener('mousemove', onMove, { capture: true });
+            document.removeEventListener('mouseup', onUp, { capture: true });
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.body.style.pointerEvents = '';
+        };
+    }, [isResizing]);
+
+    const setRole = (role) => {
+        setUserRole(role);
+        try { localStorage.setItem(ROLE_KEY, role); } catch (_) {}
+        if (role === 'dev') {
+            setView('dashboard');
+            setCurrentProject(null);
+            setMappings([]);
+        } else {
+            // BA: if we were in dev-project view, go to dashboard so something always renders
+            if (view === 'dev-project') {
+                setView('dashboard');
+                setCurrentProject(null);
+            }
+        }
     };
 
+    // Load projects from backend on app load (so they survive refresh/restart)
+    useEffect(() => {
+        let cancelled = false;
+        fetch(`${API}/projects`)
+            .then(res => res.ok ? res.json() : [])
+            .then(data => {
+                if (cancelled) return;
+                const list = Array.isArray(data) ? data : [];
+                setProjects(list.map(p => ({ ...p, status: p.status || 'Spec creation in progress', updated: p.updated || 'Just now', coverage: p.coverage ?? 0 })));
+            })
+            .catch(() => { if (!cancelled) setProjects([]); });
+        return () => { cancelled = true; };
+    }, []);
+
+    const handleCreateProject = async (newProject) => {
+        try {
+            const res = await fetch(`${API}/projects`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: newProject.name, sourceSchema: newProject.sourceSchema, targetSchema: newProject.targetSchema, status: 'Spec creation in progress', updated: 'Just now' })
+            });
+            if (!res.ok) throw new Error('Create failed');
+            const saved = await res.json();
+            const project = { ...saved, status: saved.status || 'Spec creation in progress', coverage: saved.coverage ?? 0 };
+            setProjects(prev => [project, ...prev]);
+            setCurrentProject(project);
+            setMappings([]);
+            setView('workspace');
+        } catch (e) {
+            console.error(e);
+            message.error('Failed to create project. Is the backend running?');
+        }
+    };
+
+    const handleDeleteProject = async (projectId, e) => {
+        if (e) e.stopPropagation();
+        try {
+            const res = await fetch(`${API}/projects/${projectId}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Delete failed');
+            setProjects(prev => prev.filter(p => p.id !== projectId));
+            if (currentProject?.id === projectId) {
+                setCurrentProject(null);
+                setMappings([]);
+                setView('dashboard');
+            }
+            message.success('Project removed');
+        } catch (err) {
+            console.error(err);
+            message.error('Failed to delete project. Is the backend running?');
+        }
+    };
+
+    const handleMarkReadyForDevelopment = async () => {
+        if (!currentProject?.id) {
+            message.error('No project selected');
+            return;
+        }
+        try {
+            const res = await fetch(`${API}/projects/${currentProject.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'Ready for Development', updated: 'Just now' })
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(text || `Update failed (${res.status})`);
+            }
+            const updated = await res.json();
+            setCurrentProject(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+            setProjects(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+            message.success('Project marked Ready for Development – Dev can now take it.');
+        } catch (err) {
+            console.error(err);
+            message.error(err.message || 'Failed to update project. Is the backend running?');
+        }
+    };
+
+    // Load mappings when opening a project (BA workspace or Dev project view)
+    useEffect(() => {
+        const needMappings = (view === 'workspace' && userRole === 'ba') || view === 'dev-project';
+        if (!needMappings || !currentProject?.id) return;
+        let cancelled = false;
+        fetch(`${API}/mappings/project/${currentProject.id}`)
+            .then(res => res.ok ? res.json() : [])
+            .then(data => { if (!cancelled) setMappings(Array.isArray(data) ? data : []); })
+            .catch(() => { if (!cancelled) setMappings([]); });
+        return () => { cancelled = true; };
+    }, [view, userRole, currentProject?.id]);
+
+    const isWorkspaceWithPanels = userRole === 'ba' && view === 'workspace' && !!currentProject;
+
+    const isDashboardView = view === 'dashboard' && !isWorkspaceWithPanels;
     return (
         <ConfigProvider theme={{ token: THEME_TOKENS }}>
-            <div className={STYLES.mainWrapper}>
-                {view === 'workspace' && (
-                    <aside style={{ width: 320 }} className={STYLES.sidebar}>
-                        <div className={STYLES.panelTitle}>
-                            <span className="flex items-center gap-2"><DatabaseOutlined className="text-emerald-500" /> SOURCE: {currentProject?.sourceSchema}</span>
+            <div
+                ref={mainWrapperRef}
+                className={STYLES.mainWrapper}
+                style={isDashboardView ? { width: '100%', minWidth: '100%' } : undefined}
+            >
+                {isWorkspaceWithPanels && (
+                    <>
+                        <aside
+                            style={{
+                                flex: `0 0 ${sourcePanelWidth}px`,
+                                width: sourcePanelWidth,
+                                minWidth: MIN_PANEL,
+                                maxWidth: MAX_PANEL,
+                                transition: isResizing ? 'none' : 'width 200ms ease-out'
+                            }}
+                            className={`${STYLES.sidebar} overflow-hidden shrink-0`}
+                        >
+                            <div className={STYLES.panelTitle}>
+                                <span className="flex items-center gap-2 truncate"><DatabaseOutlined className="text-emerald-500 shrink-0" /> SOURCE: {currentProject?.sourceSchema}</span>
+                            </div>
+                            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+                                <Tree
+                                    showLine={{ showLeafIcon: false }}
+                                    defaultExpandAll
+                                    treeData={SCHEMAS[currentProject?.sourceSchema] || SCHEMAS['EDI 834 v5010']}
+                                    onSelect={(_, {node}) => node.isLeaf && setSelectedSourceNode(node)}
+                                    className="premium-tree"
+                                />
+                            </div>
+                        </aside>
+                        <div
+                            role="separator"
+                            aria-label="Resize source panel"
+                            onPointerDown={startResizeSource}
+                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-200 flex items-center justify-center select-none border-r-2 border-slate-200"
+                            style={{ touchAction: 'none', zIndex: 30 }}
+                        >
+                            <div className="w-1 h-20 rounded-full bg-slate-300 pointer-events-none" />
                         </div>
-                        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
-                            <Tree
-                                showLine={{ showLeafIcon: false }}
-                                defaultExpandAll
-                                treeData={SCHEMAS[currentProject?.sourceSchema] || SCHEMAS['EDI 834 v5010']}
-                                onSelect={(_, {node}) => node.isLeaf && setSelectedSourceNode(node)}
-                                className="premium-tree"
-                            />
-                        </div>
-                    </aside>
+                    </>
                 )}
 
-                <main className="flex-1 flex flex-col overflow-hidden bg-white">
+                <main
+                    className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white min-h-0"
+                    style={isDashboardView ? { flex: '1 1 0%', width: '100%', minWidth: '100%' } : { flex: '1 1 0%' }}
+                >
                     <Header className={STYLES.premiumHeader}>
-                        <Space size="large">
-                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('dashboard')}>
-                                <div className="bg-emerald-500 p-1.5 rounded-lg flex items-center justify-center">
-                                    <ThunderboltOutlined className="text-white text-lg" />
+                        <div className={`flex items-center justify-start ${view === 'dashboard' ? 'flex-1 min-w-0' : 'shrink-0'}`} style={view !== 'dashboard' ? { minWidth: '6.5rem' } : undefined}>
+                            {(view === 'wizard' || view === 'workspace' || view === 'dev-project') && (
+                                <button type="button" className="group flex items-center rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors w-full min-w-0" onClick={() => { setView('dashboard'); if (view !== 'wizard') setCurrentProject(null); }} aria-label="Back">
+                                    <ArrowLeftOutlined className="text-lg shrink-0" />
+                                    <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Back</span>
+                                </button>
+                            )}
+                        </div>
+                        <div className="flex-1 min-w-0 flex justify-center items-center px-2 shrink-0">
+                            <Space size="large" className="flex-nowrap">
+                                <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setView('dashboard')} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && setView('dashboard')}>
+                                    <div className="bg-emerald-500 p-1.5 rounded-lg flex items-center justify-center shrink-0">
+                                        <ThunderboltOutlined className="text-white text-lg" />
+                                    </div>
+                                    <span className="font-black text-xl tracking-tighter text-slate-900 whitespace-nowrap">MappingStudio</span>
                                 </div>
-                                <span className="font-black text-xl tracking-tighter text-slate-900">MappingStudio</span>
-                            </div>
-                            {view !== 'dashboard' && (
+                                <div className="flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50 shrink-0">
+                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'ba' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} onClick={() => setRole('ba')}>BA</button>
+                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'dev' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} onClick={() => setRole('dev')}>Dev</button>
+                                </div>
+                            </Space>
+                        </div>
+                        <div className={`flex items-center justify-end flex-nowrap ${view === 'dashboard' ? 'flex-1 min-w-0' : 'shrink-0'}`} style={{ gap: 0 }}>
+                            {userRole === 'ba' && view === 'workspace' && (
                                 <>
-                                    <div className="h-4 w-[1px] bg-slate-200" />
-                                    <Button
-                                        type="text"
-                                        icon={<HomeOutlined />}
-                                        className="text-slate-500 hover:text-emerald-600 font-medium"
-                                        onClick={() => setView('dashboard')}
-                                    >
-                                        Home
-                                    </Button>
+                                    <Tooltip title="Export Spec">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => { if (!currentProject?.id) { message.error("No project selected"); return; } window.open(`${API}/export/excel/project/${currentProject.id}`, "_blank"); }} aria-label="Export Spec">
+                                            <FileExcelOutlined className="text-lg shrink-0" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Export Spec</span>
+                                        </button>
+                                    </Tooltip>
+                                    <Tooltip title="Publish Spec">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => message.info('Publish to SharePoint – coming soon')} aria-label="Publish Spec">
+                                            <CloudUploadOutlined className="text-lg shrink-0" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Publish Spec</span>
+                                        </button>
+                                    </Tooltip>
+                                    <Tooltip title="Ready for Development">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={() => handleMarkReadyForDevelopment()} aria-label="Ready for Development">
+                                            <CheckCircleFilled className="text-lg shrink-0" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[10rem] transition-[max-width] duration-300 ease-out ml-1.5">Ready for Development</span>
+                                        </button>
+                                    </Tooltip>
                                 </>
                             )}
-                        </Space>
-                        <Space>
-                            {view === 'workspace' && (
+                            {userRole === 'dev' && view === 'dev-project' && (
                                 <>
-                                    <Button
-                                        icon={<FileExcelOutlined />}
-                                        type="text"
-                                        className="text-slate-500 hover:text-emerald-600 font-medium"
-                                        onClick={() => {
-                                            if (!currentProject?.name) {
-                                                message.error("No project selected");
-                                                return;
-                                            }
-                                            window.open(
-                                                `${API}/export/excel/${currentProject.name}`,
-                                                "_blank"
-                                            );
-                                        }}
-                                    >
-                                        Export Spec
-                                    </Button>
-                                    <Button type="primary" icon={<ExportOutlined />} className="font-bold">Deploy Map</Button>
+                                    <Tooltip title="Download Excel">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => { if (!currentProject?.id) { message.error("No project selected"); return; } window.open(`${API}/export/excel/project/${currentProject.id}`, "_blank"); }} aria-label="Download Excel">
+                                            <FileExcelOutlined className="text-lg shrink-0" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Download Excel</span>
+                                        </button>
+                                    </Tooltip>
+                                    <Tooltip title="Generate Map">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={() => message.info('Generate Map – coming soon')} aria-label="Generate Map">
+                                            <ToolOutlined className="text-lg shrink-0" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5">Generate Map</span>
+                                        </button>
+                                    </Tooltip>
                                 </>
                             )}
-                            <Avatar size="small" className="bg-emerald-100 text-emerald-700 font-bold border border-emerald-200">JD</Avatar>
-                        </Space>
+                        </div>
                     </Header>
 
-                    <div className="flex-1 overflow-hidden relative">
+                    <div
+                        className="flex-1 min-w-0 min-h-0 overflow-hidden relative flex flex-col"
+                        style={{ width: '100%', minWidth: 0 }}
+                    >
                         {view === 'dashboard' && (
                             <Dashboard
                                 projects={projects}
+                                userRole={userRole}
                                 onNew={() => setView('wizard')}
-                                onSelect={(p) => { setCurrentProject(p); setView('workspace'); }}
+                                onSelect={(p) => {
+                                    setCurrentProject(p);
+                                    setView(userRole === 'dev' ? 'dev-project' : 'workspace');
+                                }}
+                                onDelete={handleDeleteProject}
                             />
                         )}
-                        {view === 'wizard' && (
+                        {view === 'wizard' && userRole === 'ba' && (
                             <ProjectWizard
                                 onCancel={() => setView('dashboard')}
                                 onFinish={handleCreateProject}
                             />
                         )}
-                        {view === 'workspace' && (
-                            <MappingWorkspace
-                                project={currentProject}
-                                mappings={mappings}
-                                setMappings={setMappings}
-                                selectedSource={selectedSourceNode}
-                                setSelectedSource={setSelectedSourceNode}
-                                selectedTarget={selectedTargetNode}
-                                setSelectedTarget={setSelectedTargetNode}
+                        {view === 'workspace' && userRole === 'ba' && (
+                            currentProject ? (
+                                <MappingWorkspace
+                                    project={currentProject}
+                                    mappings={mappings}
+                                    setMappings={setMappings}
+                                    selectedSource={selectedSourceNode}
+                                    setSelectedSource={setSelectedSourceNode}
+                                    selectedTarget={selectedTargetNode}
+                                    setSelectedTarget={setSelectedTargetNode}
+                                    onBack={() => { setView('dashboard'); setCurrentProject(null); }}
+                                />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+                                    <Empty description="No project selected" />
+                                    <Button type="primary" onClick={() => setView('dashboard')}>Back to Dashboard</Button>
+                                </div>
+                            )
+                        )}
+                        {view === 'dev-project' && userRole === 'dev' && (
+                            <DevProjectView project={currentProject} mappings={mappings} onBack={() => { setCurrentProject(null); setView('dashboard'); }} />
+                        )}
+                        {/* Fallback: BA in dev-project view or any unmatched state -> show dashboard */}
+                        {view === 'dev-project' && userRole === 'ba' && (
+                            <Dashboard
+                                projects={projects}
+                                userRole={userRole}
+                                onNew={() => setView('wizard')}
+                                onSelect={(p) => { setCurrentProject(p); setView('workspace'); }}
+                                onDelete={handleDeleteProject}
                             />
                         )}
                     </div>
                 </main>
 
-                {view === 'workspace' && (
-                    <aside style={{ width: 320 }} className={`${STYLES.sidebar} border-l border-r-0`}>
-                        <div className={STYLES.panelTitle}>
-                            <span className="flex items-center gap-2"><DeploymentUnitOutlined className="text-emerald-500" /> TARGET: {currentProject?.targetSchema}</span>
+                {isWorkspaceWithPanels && (
+                    <>
+                        <div
+                            role="separator"
+                            aria-label="Resize target panel"
+                            onPointerDown={startResizeTarget}
+                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-200 flex items-center justify-center select-none border-l-2 border-slate-200"
+                            style={{ touchAction: 'none', zIndex: 30 }}
+                        >
+                            <div className="w-1 h-20 rounded-full bg-slate-300 pointer-events-none" />
                         </div>
-                        <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
-                            <Tree
-                                showLine={{ showLeafIcon: false }}
-                                defaultExpandAll
-                                treeData={TARGET_CANONICAL_TREE}
-                                onSelect={(_, {node}) => node.isLeaf && setSelectedTargetNode(node)}
-                                className="premium-tree"
-                            />
+                        <div
+                            style={{
+                                flex: `0 0 ${targetPanelWidth}px`,
+                                width: targetPanelWidth,
+                                minWidth: MIN_PANEL,
+                                maxWidth: MAX_PANEL,
+                                overflow: 'hidden',
+                                transition: isResizing ? 'none' : 'width 200ms ease-out'
+                            }}
+                            className="flex flex-col h-full border-l border-slate-100 bg-white shrink-0"
+                        >
+                            <aside className={`${STYLES.sidebar} border-r-0 flex-1 flex flex-col min-w-0 w-full`} style={{ width: '100%' }}>
+                                <div className={STYLES.panelTitle}>
+                                    <span className="flex items-center gap-2 truncate min-w-0"><DeploymentUnitOutlined className="text-emerald-500 shrink-0" /> TARGET: {currentProject?.targetSchema}</span>
+                                </div>
+                                <div className="p-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                                    <Tree
+                                        showLine={{ showLeafIcon: false }}
+                                        defaultExpandAll
+                                        treeData={TARGET_CANONICAL_TREE}
+                                        onSelect={(_, {node}) => node.isLeaf && setSelectedTargetNode(node)}
+                                        className="premium-tree"
+                                    />
+                                </div>
+                            </aside>
                         </div>
-                    </aside>
+                    </>
                 )}
             </div>
         </ConfigProvider>
     );
 }
 
-function Dashboard({ projects, onNew, onSelect }) {
-    return (
-        <div className="p-20 max-w-6xl mx-auto w-full h-full overflow-y-auto custom-scrollbar">
-            <div className="text-center mb-16">
-                <Title level={2} className="font-black text-slate-900 mb-4">Enterprise Data Orchestration</Title>
-                <Text className="text-slate-400 text-lg">Initialize a mapping project to begin schema synchronization.</Text>
-            </div>
+function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
+    const isDev = userRole === 'dev';
+    const readyForDevList = projects.filter(p => p.status === 'Ready for Development');
+    const inProgressList = projects.filter(p => p.status !== 'Ready for Development');
 
-            {projects.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-24 border-2 border-dashed border-slate-100 rounded-3xl bg-slate-50/30">
-                    <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center mb-6 text-slate-300 border border-slate-100">
-                        <PlusOutlined style={{ fontSize: 24 }} />
+    const renderProjectCard = (p) => {
+        const readyForDev = p.status === 'Ready for Development';
+        const cardClick = () => {
+            if (isDev && !readyForDev) {
+                message.info('Spec creation in progress – BA must mark as Ready for Development first.');
+                return;
+            }
+            onSelect(p);
+        };
+        return (
+            <Card
+                key={p.id}
+                hoverable
+                className={`${STYLES.glassCard} ${isDev && !readyForDev ? 'opacity-75' : ''}`}
+                bodyStyle={{ padding: '24px' }}
+                onClick={cardClick}
+            >
+                <div className="flex justify-between items-start mb-4">
+                    <Title level={4} className="m-0 text-slate-800 tracking-tight flex-1 min-w-0 pr-2">{p.name}</Title>
+                    <div className="flex items-center gap-1 shrink-0">
+                        {!isDev && (
+                            <Button
+                                type="text"
+                                danger
+                                size="small"
+                                icon={<DeleteOutlined />}
+                                className="opacity-50 hover:opacity-100"
+                                onClick={(e) => onDelete(p.id, e)}
+                                aria-label="Delete project"
+                            />
+                        )}
                     </div>
-                    <Title level={4} className="text-slate-800 m-0 mb-2">No Active Projects</Title>
-                    <Text className="text-slate-400 mb-8">Your workspace is currently empty.</Text>
-                    <Button
-                        type="primary"
-                        size="large"
-                        className="px-12 h-14 font-bold text-base rounded-2xl"
-                        onClick={onNew}
-                    >
-                        New Mapping Project
-                    </Button>
                 </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {projects.map(p => (
-                        <Card
-                            key={p.id}
-                            hoverable
-                            className={STYLES.glassCard}
-                            bodyStyle={{ padding: '24px' }}
-                            onClick={() => onSelect(p)}
+                <div className="flex items-center gap-2 mb-6">
+                    <Tag className="m-0 bg-slate-50 border-slate-100 text-slate-500 font-mono text-[10px]">{p.sourceSchema}</Tag>
+                    <ArrowRightOutlined className="text-slate-300 text-[10px]" />
+                    <Tag className="m-0 bg-emerald-50 border-emerald-100 text-emerald-600 font-mono text-[10px]">{p.targetSchema}</Tag>
+                </div>
+                <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                    <span>Coverage</span>
+                    <span>{p.coverage ?? 0}%</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${p.coverage ?? 0}%` }} />
+                </div>
+            </Card>
+        );
+    };
+
+    return (
+        <div
+            className="overflow-y-auto custom-scrollbar"
+            style={{ width: '100%', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}
+        >
+            <div
+                className="px-6 py-10 box-border"
+                style={{ width: '100%', maxWidth: '64rem', marginLeft: 'auto', marginRight: 'auto' }}
+            >
+                <div className="mb-10 text-center">
+                    <Title level={2} className="font-black text-slate-900 mb-3">Enterprise Data Orchestration</Title>
+                    <Text className="text-slate-400 text-base block">
+                        {isDev ? 'View mapping specs published by BA. Select a project to view Excel in-app or download.' : 'Initialize a mapping project to begin schema synchronization.'}
+                    </Text>
+                </div>
+
+                {!isDev && (
+                    <div className="flex justify-center mb-10">
+                        <Button
+                            type="primary"
+                            size="large"
+                            icon={<PlusOutlined />}
+                            className="h-12 px-8 font-bold rounded-xl shadow-sm"
+                            onClick={onNew}
                         >
-                            <div className="flex justify-between items-start mb-4">
-                                <Title level={4} className="m-0 text-slate-800 tracking-tight">{p.name}</Title>
-                                <Tag color="green" className="m-0 border-none font-bold uppercase text-[9px] px-2">{p.status}</Tag>
-                            </div>
-                            <div className="flex items-center gap-2 mb-6">
-                                <Tag className="m-0 bg-slate-50 border-slate-100 text-slate-500 font-mono text-[10px]">{p.sourceSchema}</Tag>
-                                <ArrowRightOutlined className="text-slate-300 text-[10px]" />
-                                <Tag className="m-0 bg-emerald-50 border-emerald-100 text-emerald-600 font-mono text-[10px]">{p.targetSchema}</Tag>
-                            </div>
-                            <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-                                <span>Coverage</span>
-                                <span>{p.coverage}%</span>
-                            </div>
-                            <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
-                                <div className="h-full bg-emerald-500" style={{ width: `${p.coverage}%` }} />
-                            </div>
-                        </Card>
-                    ))}
-                    <div
-                        onClick={onNew}
-                        className="border-2 border-dashed border-slate-100 rounded-xl flex items-center justify-center cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/30 transition-all min-h-[160px]"
-                    >
-                        <PlusOutlined className="text-slate-300 text-xl" />
+                            Create Project
+                        </Button>
                     </div>
-                </div>
-            )}
+                )}
+
+                {projects.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
+                        <div className="w-14 h-14 bg-white rounded-xl shadow-sm flex items-center justify-center mb-4 text-slate-300 border border-slate-100">
+                            <PlusOutlined style={{ fontSize: 22 }} />
+                        </div>
+                        <Title level={4} className="text-slate-700 m-0 mb-1">{isDev ? 'No Projects Yet' : 'No Active Projects'}</Title>
+                        <Text className="text-slate-400 text-sm">{isDev ? 'No mapping specs have been published yet.' : 'Create your first mapping project above.'}</Text>
+                    </div>
+                ) : (
+                    <div className="space-y-10">
+                        {readyForDevList.length > 0 && (
+                            <section>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="h-1 w-8 rounded-full bg-emerald-500" />
+                                    <h3 className="m-0 text-sm font-bold uppercase tracking-wider text-emerald-600">Ready for Development</h3>
+                                    <Tag color="green" className="m-0 text-[10px] font-bold">{readyForDevList.length}</Tag>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {readyForDevList.map(renderProjectCard)}
+                                </div>
+                            </section>
+                        )}
+                        {inProgressList.length > 0 && (
+                            <section>
+                                <div className="flex items-center gap-2 mb-4">
+                                    <div className="h-1 w-8 rounded-full bg-slate-300" />
+                                    <h3 className="m-0 text-sm font-bold uppercase tracking-wider text-slate-500">Spec creation in progress</h3>
+                                    <Tag className="m-0 text-[10px] font-bold border-slate-200">{inProgressList.length}</Tag>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {inProgressList.map(renderProjectCard)}
+                                </div>
+                            </section>
+                        )}
+                    </div>
+                )}
+            </div>
         </div>
+    );
+}
+
+function DevProjectView({ project, mappings, onBack }) {
+    const columns = [
+        { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-slate-600">{t ?? '—'}</span> },
+        { title: 'Mapping Logic', dataIndex: 'logic', key: 'logic', render: t => <code className="text-xs text-slate-500 block max-w-md truncate">{t ?? '—'}</code> },
+        { title: 'Target Field', dataIndex: 'target', key: 'target', render: t => <span className="font-mono text-xs text-emerald-600">{t ?? '—'}</span> },
+        { title: 'Comments', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-slate-400">{t ?? '—'}</span> },
+    ];
+    return (
+        <Content className="p-10 overflow-y-auto custom-scrollbar">
+            <div className="max-w-5xl mx-auto space-y-6">
+                <div className="flex items-center gap-4 mb-6">
+                    <Button type="text" onClick={onBack} className="text-slate-500">← Back to projects</Button>
+                </div>
+                <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+                    <Title level={4} className="m-0 mb-2 text-slate-800">{project?.name ?? 'Project'}</Title>
+                    <Text type="secondary" className="text-sm">
+                        {project?.sourceSchema} → {project?.targetSchema}
+                    </Text>
+                </div>
+                <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                    <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mapping spec (Excel view)</span>
+                    </div>
+                    <Table
+                        dataSource={mappings}
+                        columns={columns}
+                        rowKey="id"
+                        pagination={false}
+                        size="small"
+                        locale={{ emptyText: <div className="py-10 text-slate-400 text-xs">No mapping rules in this spec.</div> }}
+                        className="studio-table"
+                    />
+                </div>
+                <Text className="text-xs text-slate-400 block">Use header actions to Download Excel or Generate Map.</Text>
+            </div>
+        </Content>
     );
 }
 
@@ -362,9 +738,12 @@ function ProjectWizard({ onCancel, onFinish }) {
     const [target, setTarget] = useState('JSON Schema');
 
     return (
-        <div className="flex items-center justify-center h-full">
-            <Card className="w-full max-w-lg shadow-2xl border-none p-4 rounded-3xl">
-                <div className="mb-10 text-center">
+        <div className="w-full flex-1 flex items-center justify-center min-h-0 p-6">
+            <Card className="max-w-lg w-full shadow-2xl border-none p-6 rounded-3xl shrink-0 mx-auto" style={{ maxWidth: '32rem' }}>
+                <Button type="text" icon={<ArrowLeftOutlined />} className="text-slate-500 hover:text-emerald-600 -ml-1 mb-4 pl-0" onClick={onCancel}>
+                    Back to Dashboard
+                </Button>
+                <div className="mb-8 text-center">
                     <Title level={3} className="mb-1 font-black">Configure Mapping Flow</Title>
                     <Text type="secondary">Define your project namespace and schema requirements.</Text>
                 </div>
@@ -418,10 +797,24 @@ function ProjectWizard({ onCancel, onFinish }) {
     );
 }
 
-function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget }) {
+function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget, onBack }) {
     const [logic, setLogic] = useState('');
     const [isAiThinking, setIsAiThinking] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState([]);
+
+    if (!project) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
+                <Empty description="No project selected." />
+                {onBack && <Button type="primary" icon={<ArrowLeftOutlined />} onClick={onBack}>Back to Dashboard</Button>}
+            </div>
+        );
+    }
+
+    const defaultSuggestions = useCallback((src, tgt) => [
+        { label: 'Direct Mapping', code: `target.${tgt.key} = source.${src.key};` },
+        { label: 'Standard Clean', code: `target.${tgt.key} = source.${src.key}?.trim().toUpperCase();` }
+    ], []);
 
     const getAiSuggestions = useCallback(async (src, tgt) => {
         if (!src || !tgt) return;
@@ -429,16 +822,14 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         try {
             const res = await fetch(`${API}/ai/suggest?source=${src.key}&target=${tgt.key}`, { method: "POST" });
             const data = await res.json();
-            setAiSuggestions(data || []);
+            const list = Array.isArray(data) ? data : [];
+            setAiSuggestions(list.length > 0 ? list : defaultSuggestions(src, tgt));
         } catch (e) {
-            setAiSuggestions([
-                { label: 'Direct Mapping', code: `target.${tgt.key} = source.${src.key};` },
-                { label: 'Standard Clean', code: `target.${tgt.key} = source.${src.key}?.trim().toUpperCase();` }
-            ]);
+            setAiSuggestions(defaultSuggestions(src, tgt));
         } finally {
             setIsAiThinking(false);
         }
-    }, []);
+    }, [defaultSuggestions]);
 
     useEffect(() => {
         if (selectedSource && selectedTarget) {
@@ -468,6 +859,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    projectId: project.id,
                     projectName: project.name,
                     source: selectedSource.title,
                     target: selectedTarget.title,
@@ -477,7 +869,8 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
 
             if (!response.ok) throw new Error('API Rejection');
 
-            setMappings([newMapping, ...mappings]);
+            const saved = await response.json();
+            setMappings([saved, ...mappings]);
             setLogic('');
             setSelectedSource(null);
             setSelectedTarget(null);
@@ -517,7 +910,16 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                     danger
                     size="small"
                     icon={<DeleteOutlined className="opacity-30 hover:opacity-100" />}
-                    onClick={() => setMappings(mappings.filter(m => m.id !== record.id))}
+                    onClick={async () => {
+                        if (record.id != null) {
+                            try {
+                                const res = await fetch(`${API}/mappings/${record.id}`, { method: 'DELETE' });
+                                if (res.ok) setMappings(mappings.filter(m => m.id !== record.id));
+                            } catch (e) { message.error('Failed to delete from backend'); }
+                        } else {
+                            setMappings(mappings.filter(m => m.id !== record.id));
+                        }
+                    }}
                 />
             )
         }
@@ -527,6 +929,11 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         <div className="h-full flex flex-col bg-white">
             <Content className="p-10 overflow-y-auto custom-scrollbar">
                 <div className="max-w-5xl mx-auto space-y-8">
+                    {onBack && (
+                        <Button type="text" icon={<ArrowLeftOutlined />} className="text-slate-500 hover:text-emerald-600 -ml-1 pl-0 mb-2" onClick={onBack}>
+                            Back to Dashboard
+                        </Button>
+                    )}
                     {/* Active Composer */}
                     <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
                         <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-10 mb-10">

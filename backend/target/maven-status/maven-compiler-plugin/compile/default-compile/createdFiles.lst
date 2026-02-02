@@ -1,6 +1,7 @@
 com/mappingstudio/export/ExcelExportService.class
 com/mappingstudio/ai/AiTrainerService.class
 com/mappingstudio/ai/AiController.class
+com/mappingstudio/repository/ProjectRepository.class
 com/mappingstudio/ai/AiLearningRepository.class
 com/mappingstudio/mapping/MappingEntity.class
 com/mappingstudio/mapping/MappingController.class
@@ -13,6 +14,7 @@ com/mappingstudio/ai/AiLearningEntity.class
 com/mappingstudio/repository/MappingRepository.class
 com/mappingstudio/config/WebConfig.class
 com/mappingstudio/ai/AiSuggestionEngine.class
+com/mappingstudio/controller/ProjectController.class
 com/mappingstudio/export/ExportController.class
 com/mappingstudio/BackendApplication.class
 com/mappingstudio/model/Mapping.class

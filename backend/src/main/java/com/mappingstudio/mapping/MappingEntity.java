@@ -9,7 +9,10 @@ import lombok.Setter;
 @Entity
 @Table(
         name = "mappings",
-        indexes = @Index(name = "idx_project", columnList = "projectName")
+        indexes = {
+            @Index(name = "idx_project", columnList = "projectName"),
+            @Index(name = "idx_project_id", columnList = "projectId")
+        }
 )
 public class MappingEntity {
 
@@ -17,6 +20,7 @@ public class MappingEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private Long projectId;
     private String projectName;
     private String source;
     private String target;
