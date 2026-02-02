@@ -14,7 +14,9 @@ com/mappingstudio/ai/AiLearningEntity.class
 com/mappingstudio/repository/MappingRepository.class
 com/mappingstudio/config/WebConfig.class
 com/mappingstudio/ai/AiSuggestionEngine.class
+com/mappingstudio/config/AccessKeyFilter.class
 com/mappingstudio/controller/ProjectController.class
+com/mappingstudio/controller/AuthController.class
 com/mappingstudio/export/ExportController.class
 com/mappingstudio/BackendApplication.class
 com/mappingstudio/model/Mapping.class

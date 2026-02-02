@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+# Access key: only users who know this can open the app (set APP_ACCESS_KEY env to override)
+app:
+  access-key: ${APP_ACCESS_KEY:mappingstudio}
+
 spring:
   datasource:
     url: jdbc:sqlite:./mappingstudio.db

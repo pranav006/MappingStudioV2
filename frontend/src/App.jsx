@@ -154,8 +154,69 @@ const TARGET_CANONICAL_TREE = [
 ];
 
 const ROLE_KEY = 'mappingstudio_role';
+const ACCESS_KEY_STORAGE = 'mappingstudio_access_key';
+
+function LoginScreen({ apiBase, onSuccess }) {
+    const [key, setKey] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!key.trim()) return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`${apiBase}/auth/check`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accessKey: key.trim() })
+            });
+            if (res.ok) {
+                sessionStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
+                onSuccess(key.trim());
+            } else {
+                setError('Invalid access key');
+            }
+        } catch {
+            setError('Could not reach server');
+        } finally {
+            setLoading(false);
+        }
+    };
+    return (
+        <div className="h-screen w-full flex bg-white items-center justify-center p-6">
+            <Card className="max-w-sm w-full shadow-lg rounded-2xl border border-slate-100 p-8" style={{ maxWidth: '24rem' }}>
+                <div className="text-center mb-6">
+                    <div className="inline-flex p-3 rounded-xl bg-emerald-500 mb-4">
+                        <ThunderboltOutlined className="text-white text-2xl" />
+                    </div>
+                    <Title level={4} className="!mb-1 text-slate-800">MappingStudio</Title>
+                    <Text type="secondary" className="text-sm">Enter access key to continue</Text>
+                </div>
+                <form onSubmit={handleSubmit}>
+                    <Input.Password
+                        placeholder="Access key"
+                        value={key}
+                        onChange={(e) => setKey(e.target.value)}
+                        size="large"
+                        className="mb-4"
+                        disabled={loading}
+                        autoFocus
+                    />
+                    {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
+                    <Button type="primary" htmlType="submit" block size="large" loading={loading} className="font-semibold">
+                        Access app
+                    </Button>
+                </form>
+            </Card>
+        </div>
+    );
+}
 
 export default function App() {
+    const [accessKey, setAccessKey] = useState(() => {
+        try { return sessionStorage.getItem(ACCESS_KEY_STORAGE) || ''; } catch { return ''; }
+    });
     const [userRole, setUserRole] = useState(() => {
         try {
             const r = localStorage.getItem(ROLE_KEY);
@@ -262,10 +323,23 @@ export default function App() {
         }
     };
 
+    const fetchWithAuth = useCallback(async (url, options = {}) => {
+        const res = await fetch(url, {
+            ...options,
+            headers: { ...(options.headers || {}), 'X-Access-Key': accessKey }
+        });
+        if (res.status === 401) {
+            setAccessKey('');
+            try { sessionStorage.removeItem(ACCESS_KEY_STORAGE); } catch (_) {}
+        }
+        return res;
+    }, [accessKey]);
+
     // Load projects from backend on app load (so they survive refresh/restart)
     useEffect(() => {
+        if (!accessKey) return;
         let cancelled = false;
-        fetch(`${API}/projects`)
+        fetchWithAuth(`${API}/projects`)
             .then(res => res.ok ? res.json() : [])
             .then(data => {
                 if (cancelled) return;
@@ -274,11 +348,11 @@ export default function App() {
             })
             .catch(() => { if (!cancelled) setProjects([]); });
         return () => { cancelled = true; };
-    }, []);
+    }, [accessKey, fetchWithAuth]);
 
     const handleCreateProject = async (newProject) => {
         try {
-            const res = await fetch(`${API}/projects`, {
+            const res = await fetchWithAuth(`${API}/projects`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newProject.name, sourceSchema: newProject.sourceSchema, targetSchema: newProject.targetSchema, status: 'Spec creation in progress', updated: 'Just now' })
@@ -299,7 +373,7 @@ export default function App() {
     const handleDeleteProject = async (projectId, e) => {
         if (e) e.stopPropagation();
         try {
-            const res = await fetch(`${API}/projects/${projectId}`, { method: 'DELETE' });
+            const res = await fetchWithAuth(`${API}/projects/${projectId}`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Delete failed');
             setProjects(prev => prev.filter(p => p.id !== projectId));
             if (currentProject?.id === projectId) {
@@ -320,7 +394,7 @@ export default function App() {
             return;
         }
         try {
-            const res = await fetch(`${API}/projects/${currentProject.id}`, {
+            const res = await fetchWithAuth(`${API}/projects/${currentProject.id}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: 'Ready for Development', updated: 'Just now' })
@@ -342,18 +416,46 @@ export default function App() {
     // Load mappings when opening a project (BA workspace or Dev project view)
     useEffect(() => {
         const needMappings = (view === 'workspace' && userRole === 'ba') || view === 'dev-project';
-        if (!needMappings || !currentProject?.id) return;
+        if (!needMappings || !currentProject?.id || !accessKey) return;
         let cancelled = false;
-        fetch(`${API}/mappings/project/${currentProject.id}`)
+        fetchWithAuth(`${API}/mappings/project/${currentProject.id}`)
             .then(res => res.ok ? res.json() : [])
             .then(data => { if (!cancelled) setMappings(Array.isArray(data) ? data : []); })
             .catch(() => { if (!cancelled) setMappings([]); });
         return () => { cancelled = true; };
-    }, [view, userRole, currentProject?.id]);
+    }, [view, userRole, currentProject?.id, accessKey, fetchWithAuth]);
 
     const isWorkspaceWithPanels = userRole === 'ba' && view === 'workspace' && !!currentProject;
 
     const isDashboardView = view === 'dashboard' && !isWorkspaceWithPanels;
+
+    const handleExportExcel = useCallback(async () => {
+        if (!currentProject?.id) { message.error("No project selected"); return; }
+        const res = await fetchWithAuth(`${API}/export/excel/project/${currentProject.id}`);
+        if (res.status === 401) return;
+        if (!res.ok) { message.error('Export failed'); return; }
+        try {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mapping-${currentProject.name || currentProject.id}.xlsx`;
+            a.click();
+            URL.revokeObjectURL(url);
+            message.success('Download started');
+        } catch (e) {
+            message.error('Download failed');
+        }
+    }, [currentProject?.id, currentProject?.name, fetchWithAuth]);
+
+    if (!accessKey) {
+        return (
+            <ConfigProvider theme={{ token: THEME_TOKENS }}>
+                <LoginScreen apiBase={API} onSuccess={setAccessKey} />
+            </ConfigProvider>
+        );
+    }
+
     return (
         <ConfigProvider theme={{ token: THEME_TOKENS }}>
             <div
@@ -429,7 +531,7 @@ export default function App() {
                             {userRole === 'ba' && view === 'workspace' && (
                                 <>
                                     <Tooltip title="Export Spec">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => { if (!currentProject?.id) { message.error("No project selected"); return; } window.open(`${API}/export/excel/project/${currentProject.id}`, "_blank"); }} aria-label="Export Spec">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={handleExportExcel} aria-label="Export Spec">
                                             <FileExcelOutlined className="text-lg shrink-0" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Export Spec</span>
                                         </button>
@@ -451,7 +553,7 @@ export default function App() {
                             {userRole === 'dev' && view === 'dev-project' && (
                                 <>
                                     <Tooltip title="Download Excel">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => { if (!currentProject?.id) { message.error("No project selected"); return; } window.open(`${API}/export/excel/project/${currentProject.id}`, "_blank"); }} aria-label="Download Excel">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={handleExportExcel} aria-label="Download Excel">
                                             <FileExcelOutlined className="text-lg shrink-0" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Download Excel</span>
                                         </button>
@@ -497,6 +599,7 @@ export default function App() {
                                     setMappings={setMappings}
                                     selectedSource={selectedSourceNode}
                                     setSelectedSource={setSelectedSourceNode}
+                                    fetchWithAuth={fetchWithAuth}
                                     selectedTarget={selectedTargetNode}
                                     setSelectedTarget={setSelectedTargetNode}
                                     onBack={() => { setView('dashboard'); setCurrentProject(null); }}
@@ -797,7 +900,7 @@ function ProjectWizard({ onCancel, onFinish }) {
     );
 }
 
-function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget, onBack }) {
+function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget, onBack, fetchWithAuth }) {
     const [logic, setLogic] = useState('');
     const [isAiThinking, setIsAiThinking] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState([]);
@@ -817,10 +920,10 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
     ], []);
 
     const getAiSuggestions = useCallback(async (src, tgt) => {
-        if (!src || !tgt) return;
+        if (!src || !tgt || !fetchWithAuth) return;
         setIsAiThinking(true);
         try {
-            const res = await fetch(`${API}/ai/suggest?source=${src.key}&target=${tgt.key}`, { method: "POST" });
+            const res = await fetchWithAuth(`${API}/ai/suggest?source=${src.key}&target=${tgt.key}`, { method: "POST" });
             const data = await res.json();
             const list = Array.isArray(data) ? data : [];
             setAiSuggestions(list.length > 0 ? list : defaultSuggestions(src, tgt));
@@ -829,7 +932,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         } finally {
             setIsAiThinking(false);
         }
-    }, [defaultSuggestions]);
+    }, [defaultSuggestions, fetchWithAuth]);
 
     useEffect(() => {
         if (selectedSource && selectedTarget) {
@@ -855,7 +958,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         };
 
         try {
-            const response = await fetch(`${API}/mappings/save`, {
+            const response = await fetchWithAuth(`${API}/mappings/save`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -913,7 +1016,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                     onClick={async () => {
                         if (record.id != null) {
                             try {
-                                const res = await fetch(`${API}/mappings/${record.id}`, { method: 'DELETE' });
+                                const res = await fetchWithAuth(`${API}/mappings/${record.id}`, { method: 'DELETE' });
                                 if (res.ok) setMappings(mappings.filter(m => m.id !== record.id));
                             } catch (e) { message.error('Failed to delete from backend'); }
                         } else {
