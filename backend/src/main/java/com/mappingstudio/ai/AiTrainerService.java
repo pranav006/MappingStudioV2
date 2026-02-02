@@ -2,6 +2,11 @@ package com.mappingstudio.ai;
 
 import org.springframework.stereotype.Service;
 
+/**
+ * Records accepted/rejected/edited mappings for AI suggestions.
+ * Does not handle file uploads or Excel; bulk import is isolated in
+ * com.mappingstudio.ai.training (TrainingImportService + scanner + parser).
+ */
 @Service
 public class AiTrainerService {
 

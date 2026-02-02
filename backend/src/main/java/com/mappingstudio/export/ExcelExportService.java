@@ -53,6 +53,7 @@ public class ExcelExportService {
         header.createCell(1).setCellValue("Mapping Logic");
         header.createCell(2).setCellValue("Target Field");
         header.createCell(3).setCellValue("Comments");
+        header.createCell(4).setCellValue("Review later");
 
         int rowIdx = 1;
         for (MappingEntity m : rowsToWrite) {
@@ -65,6 +66,7 @@ public class ExcelExportService {
             row.createCell(1).setCellValue(log);
             row.createCell(2).setCellValue(tgt);
             row.createCell(3).setCellValue(m.getComments() != null ? m.getComments().trim() : "");
+            row.createCell(4).setCellValue(Boolean.TRUE.equals(m.getReviewLater()) ? "Y" : "");
         }
 
         int lastRowIndex = rowIdx - 1;
@@ -76,7 +78,7 @@ public class ExcelExportService {
             sheet.shiftRows(lastRowIndex + 2, end, -1);
         }
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             sheet.autoSizeColumn(i);
         }
 

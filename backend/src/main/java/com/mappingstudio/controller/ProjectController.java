@@ -1,5 +1,6 @@
 package com.mappingstudio.controller;
 
+import com.mappingstudio.edi.EdiSchemaRegistry;
 import com.mappingstudio.mapping.MappingEntity;
 import com.mappingstudio.model.ProjectEntity;
 import com.mappingstudio.repository.MappingRepository;
@@ -17,15 +18,35 @@ public class ProjectController {
 
     private final ProjectRepository projectRepo;
     private final MappingRepository mappingRepo;
+    private final EdiSchemaRegistry ediSchemaRegistry;
 
-    public ProjectController(ProjectRepository projectRepo, MappingRepository mappingRepo) {
+    public ProjectController(ProjectRepository projectRepo, MappingRepository mappingRepo, EdiSchemaRegistry ediSchemaRegistry) {
         this.projectRepo = projectRepo;
         this.mappingRepo = mappingRepo;
+        this.ediSchemaRegistry = ediSchemaRegistry;
     }
 
     @GetMapping
     public List<ProjectEntity> list() {
-        return projectRepo.findAllByOrderByIdDesc();
+        List<ProjectEntity> projects = projectRepo.findAllByOrderByIdDesc();
+        for (ProjectEntity p : projects) {
+            int coverage = computeCoverage(p.getId(), p.getTargetSchema());
+            p.setCoverage(coverage);
+        }
+        return projects;
+    }
+
+    /** Coverage = min(100, round(100 * distinct mapped targets / total target schema leaf count)). */
+    private int computeCoverage(Long projectId, String targetSchema) {
+        List<MappingEntity> mappings = mappingRepo.findByProjectId(projectId);
+        long distinctTargets = mappings.stream()
+            .map(MappingEntity::getTarget)
+            .filter(t -> t != null && !t.isBlank())
+            .distinct()
+            .count();
+        int totalLeaves = ediSchemaRegistry.getTargetSchemaLeafCount(targetSchema);
+        if (totalLeaves <= 0) totalLeaves = 1;
+        return (int) Math.min(100, Math.round(100.0 * distinctTargets / totalLeaves));
     }
 
     @PostMapping

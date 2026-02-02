@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
     Layout,
     Button,
     Input,
     Select,
+    Segmented,
     Tree,
     Badge,
     Space,
@@ -40,7 +41,10 @@ import {
     SwapOutlined,
     FileExcelOutlined,
     CloudUploadOutlined,
-    ToolOutlined
+    ToolOutlined,
+    FlagOutlined,
+    FlagFilled,
+    EditOutlined
 } from '@ant-design/icons';
 
 const { Header, Content } = Layout;
@@ -59,10 +63,10 @@ const THEME_TOKENS = {
 
 const STYLES = {
     mainWrapper: "h-screen w-full flex bg-white overflow-hidden",
-    sidebar: "bg-white border-r border-slate-100 h-full overflow-hidden flex flex-col relative z-20",
-    panelTitle: "text-[10px] font-bold uppercase tracking-[0.25em] text-slate-400 px-6 py-5 border-b border-slate-50 flex items-center justify-between bg-white",
-    premiumHeader: "bg-white border-b border-slate-100 px-8 flex items-center justify-between h-16 shrink-0 sticky top-0 z-50 relative",
-    glassCard: "bg-white border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all duration-300",
+    sidebar: "bg-white border-r border-[rgba(0,0,0,0.06)] h-full overflow-hidden flex flex-col relative z-20",
+    panelTitle: "text-[10px] font-extrabold uppercase tracking-[0.22em] text-[#475569] px-6 py-5 border-b border-[rgba(0,0,0,0.04)] flex items-center justify-between bg-white",
+    premiumHeader: "bg-white border-b border-[rgba(0,0,0,0.04)] px-8 flex items-center justify-between h-16 shrink-0 sticky top-0 z-50 relative",
+    glassCard: "bg-white border border-[rgba(0,0,0,0.06)] rounded-xl bg-slate-50/30 hover:border-[rgba(0,0,0,0.07)] transition-colors duration-200",
 };
 
 // --- ENTERPRISE SCHEMA DEFINITIONS ---
@@ -131,30 +135,35 @@ const SCHEMAS = {
                 { title: 'N301 • Address Line 1', key: 'N301_P', isLeaf: true },
             ]
         }
+    ],
+    'JSON Schema': [
+        {
+            title: 'Unified Model',
+            key: 'uim',
+            children: [
+                {
+                    title: 'Party Information',
+                    key: 'party',
+                    children: [
+                        { title: 'firstName', key: 'fname', isLeaf: true },
+                        { title: 'lastName', key: 'lname', isLeaf: true },
+                        { title: 'taxIdentifier', key: 'tax_id', isLeaf: true },
+                        { title: 'dateOfBirth', key: 'dob', isLeaf: true },
+                    ]
+                }
+            ]
+        }
     ]
 };
 
-const TARGET_CANONICAL_TREE = [
-    {
-        title: 'Unified Model',
-        key: 'uim',
-        children: [
-            {
-                title: 'Party Information',
-                key: 'party',
-                children: [
-                    { title: 'firstName', key: 'fname', isLeaf: true },
-                    { title: 'lastName', key: 'lname', isLeaf: true },
-                    { title: 'taxIdentifier', key: 'tax_id', isLeaf: true },
-                    { title: 'dateOfBirth', key: 'dob', isLeaf: true },
-                ]
-            }
-        ]
-    }
-];
-
 const ROLE_KEY = 'mappingstudio_role';
 const ACCESS_KEY_STORAGE = 'mappingstudio_access_key';
+
+// Map UI schema names to backend EDI schema file keys (no .json)
+const EDI_SCHEMA_API_KEYS = {
+    'EDI 834 v5010': '834_5010',
+    'EDI 837P': '837P_5010',
+};
 
 function LoginScreen({ apiBase, onSuccess }) {
     const [key, setKey] = useState('');
@@ -185,13 +194,13 @@ function LoginScreen({ apiBase, onSuccess }) {
     };
     return (
         <div className="h-screen w-full flex bg-white items-center justify-center p-6">
-            <Card className="max-w-sm w-full shadow-lg rounded-2xl border border-slate-100 p-8" style={{ maxWidth: '24rem' }}>
+            <Card className="max-w-sm w-full rounded-2xl border border-[rgba(0,0,0,0.06)] p-8 bg-white" style={{ maxWidth: '24rem' }}>
                 <div className="text-center mb-6">
                     <div className="inline-flex p-3 rounded-xl bg-emerald-500 mb-4">
                         <ThunderboltOutlined className="text-white text-2xl" />
                     </div>
-                    <Title level={4} className="!mb-1 text-slate-800">MappingStudio</Title>
-                    <Text type="secondary" className="text-sm">Enter access key to continue</Text>
+                    <Title level={4} className="!mb-1 text-[#0F172A]">MappingStudio</Title>
+                    <Text className="text-sm text-[#64748B]">Enter access key to continue</Text>
                 </div>
                 <form onSubmit={handleSubmit}>
                     <Input.Password
@@ -203,7 +212,7 @@ function LoginScreen({ apiBase, onSuccess }) {
                         disabled={loading}
                         autoFocus
                     />
-                    {error && <div className="text-red-500 text-sm mb-3">{error}</div>}
+                    {error && <div className="text-red-400 text-sm mb-3">{error}</div>}
                     <Button type="primary" htmlType="submit" block size="large" loading={loading} className="font-semibold">
                         Access app
                     </Button>
@@ -217,6 +226,7 @@ export default function App() {
     const [accessKey, setAccessKey] = useState(() => {
         try { return sessionStorage.getItem(ACCESS_KEY_STORAGE) || ''; } catch { return ''; }
     });
+    const [schemaTrees, setSchemaTrees] = useState({});
     const [userRole, setUserRole] = useState(() => {
         try {
             const r = localStorage.getItem(ROLE_KEY);
@@ -229,9 +239,18 @@ export default function App() {
     const [mappings, setMappings] = useState([]);
     const [selectedSourceNode, setSelectedSourceNode] = useState(null);
     const [selectedTargetNode, setSelectedTargetNode] = useState(null);
+    const [selectedLedgerMapping, setSelectedLedgerMapping] = useState(null);
+    const [awaitingSourcePickForEdit, setAwaitingSourcePickForEdit] = useState(false);
+    const [awaitingTargetPickForEdit, setAwaitingTargetPickForEdit] = useState(false);
     const [sourcePanelWidth, setSourcePanelWidth] = useState(320);
     const [targetPanelWidth, setTargetPanelWidth] = useState(320);
     const [isResizing, setIsResizing] = useState(false);
+    const [sourceSchemaSearch, setSourceSchemaSearch] = useState('');
+    const [targetSchemaSearch, setTargetSchemaSearch] = useState('');
+    const [highlightedSourceKeys, setHighlightedSourceKeys] = useState([]);
+    const [highlightedTargetKeys, setHighlightedTargetKeys] = useState([]);
+    const [debouncedSourceSearch, setDebouncedSourceSearch] = useState('');
+    const [debouncedTargetSearch, setDebouncedTargetSearch] = useState('');
     const resizingSource = useRef(false);
     const resizingTarget = useRef(false);
     const mainWrapperRef = useRef(null);
@@ -335,9 +354,9 @@ export default function App() {
         return res;
     }, [accessKey]);
 
-    // Load projects from backend on app load (so they survive refresh/restart)
+    // Load projects from backend on app load and when returning to dashboard (so coverage is up to date)
     useEffect(() => {
-        if (!accessKey) return;
+        if (!accessKey || view !== 'dashboard') return;
         let cancelled = false;
         fetchWithAuth(`${API}/projects`)
             .then(res => res.ok ? res.json() : [])
@@ -348,7 +367,7 @@ export default function App() {
             })
             .catch(() => { if (!cancelled) setProjects([]); });
         return () => { cancelled = true; };
-    }, [accessKey, fetchWithAuth]);
+    }, [accessKey, fetchWithAuth, view]);
 
     const handleCreateProject = async (newProject) => {
         try {
@@ -363,6 +382,11 @@ export default function App() {
             setProjects(prev => [project, ...prev]);
             setCurrentProject(project);
             setMappings([]);
+            setSelectedLedgerMapping(null);
+            setSelectedSourceNode(null);
+            setSelectedTargetNode(null);
+            setAwaitingSourcePickForEdit(false);
+            setAwaitingTargetPickForEdit(false);
             setView('workspace');
         } catch (e) {
             console.error(e);
@@ -412,6 +436,169 @@ export default function App() {
             message.error(err.message || 'Failed to update project. Is the backend running?');
         }
     };
+
+    // Load schema trees (EDI from API, others from SCHEMAS) for both source and target
+    useEffect(() => {
+        const sourceSchema = currentProject?.sourceSchema;
+        const targetSchema = currentProject?.targetSchema;
+        const names = [sourceSchema, targetSchema].filter(Boolean);
+        const toLoad = names.filter(n => EDI_SCHEMA_API_KEYS[n] && !schemaTrees[n]);
+        if (!accessKey || toLoad.length === 0) return;
+        let cancelled = false;
+        Promise.all(toLoad.map(name =>
+            fetchWithAuth(`${API}/edi/schema/${EDI_SCHEMA_API_KEYS[name]}`)
+                .then(r => r.ok ? r.json() : null)
+                .then(data => ({ name, tree: data?.tree }))
+        )).then(results => {
+            if (cancelled) return;
+            setSchemaTrees(prev => {
+                const next = { ...prev };
+                results.forEach(({ name, tree }) => { if (tree) next[name] = tree; });
+                return next;
+            });
+        }).catch(() => {});
+        return () => { cancelled = true; };
+    }, [currentProject?.sourceSchema, currentProject?.targetSchema, accessKey, schemaTrees, fetchWithAuth]);
+
+    const getTreeForSchema = useCallback((schemaName) => {
+        if (!schemaName) return [];
+        return schemaTrees[schemaName] ?? SCHEMAS[schemaName] ?? [];
+    }, [schemaTrees]);
+
+    const mappedSourceTitles = useMemo(() => new Set((mappings || []).map(m => m.source).filter(Boolean)), [mappings]);
+    const mappedTargetTitles = useMemo(() => new Set((mappings || []).map(m => m.target).filter(Boolean)), [mappings]);
+
+    const getMatchingKeys = useCallback((treeData, query) => {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return [];
+        const keys = [];
+        const walk = (nodes) => {
+            if (!Array.isArray(nodes)) return;
+            nodes.forEach((n) => {
+                const title = (n.title || '').toString().toLowerCase();
+                const key = (n.key || '').toString().toLowerCase();
+                if (title.includes(q) || key.includes(q)) keys.push(n.key);
+                if (n.children) walk(n.children);
+            });
+        };
+        walk(treeData || []);
+        return keys;
+    }, []);
+
+    // Leaf-only matches for quick select (mapping uses leaves only)
+    const getMatchingNodes = useCallback((treeData, query) => {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return [];
+        const out = [];
+        const walk = (nodes) => {
+            if (!Array.isArray(nodes)) return;
+            nodes.forEach((n) => {
+                const title = (n.title || '').toString().toLowerCase();
+                const key = (n.key || '').toString().toLowerCase();
+                const match = title.includes(q) || key.includes(q);
+                if (n.isLeaf && match) out.push(n);
+                if (n.children) walk(n.children);
+            });
+        };
+        walk(treeData || []);
+        return out;
+    }, []);
+
+    // Debounce schema search (fast 150ms) and trigger highlight (fade out after 1.5s)
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSourceSearch(sourceSchemaSearch), 150);
+        return () => clearTimeout(t);
+    }, [sourceSchemaSearch]);
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedTargetSearch(targetSchemaSearch), 150);
+        return () => clearTimeout(t);
+    }, [targetSchemaSearch]);
+    useEffect(() => {
+        const tree = getTreeForSchema(currentProject?.sourceSchema) || [];
+        const q = (debouncedSourceSearch || '').trim();
+        if (!q) {
+            setHighlightedSourceKeys([]);
+            return;
+        }
+        const keys = getMatchingKeys(tree, q);
+        setHighlightedSourceKeys(keys);
+        const clear = setTimeout(() => setHighlightedSourceKeys([]), 1500);
+        return () => clearTimeout(clear);
+    }, [debouncedSourceSearch, currentProject?.sourceSchema, getMatchingKeys]);
+    useEffect(() => {
+        const tree = getTreeForSchema(currentProject?.targetSchema) || [];
+        const q = (debouncedTargetSearch || '').trim();
+        if (!q) {
+            setHighlightedTargetKeys([]);
+            return;
+        }
+        const keys = getMatchingKeys(tree, q);
+        setHighlightedTargetKeys(keys);
+        const clear = setTimeout(() => setHighlightedTargetKeys([]), 1500);
+        return () => clearTimeout(clear);
+    }, [debouncedTargetSearch, currentProject?.targetSchema, getMatchingKeys]);
+
+    const sourceMatchNodes = useMemo(() => {
+        const tree = getTreeForSchema(currentProject?.sourceSchema) || [];
+        return getMatchingNodes(tree, debouncedSourceSearch);
+    }, [currentProject?.sourceSchema, debouncedSourceSearch, getTreeForSchema, getMatchingNodes]);
+
+    const targetMatchNodes = useMemo(() => {
+        const tree = getTreeForSchema(currentProject?.targetSchema) || [];
+        return getMatchingNodes(tree, debouncedTargetSearch);
+    }, [currentProject?.targetSchema, debouncedTargetSearch, getTreeForSchema, getMatchingNodes]);
+
+    const scrollToNodeByKey = useCallback((treeAttr, key) => {
+        const el = document.querySelector(`[data-tree="${treeAttr}"] [data-node-key="${key}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, []);
+
+    const renderSchemaTreeTitle = useCallback((node, mappedTitles, selectedTitle, highlightedKeys) => {
+        const isParent = !node.isLeaf;
+        const parentCls = 'font-semibold text-[#0F172A] leading-tight';
+        const childCls = 'text-[#334155] font-mono text-xs leading-relaxed';
+        const baseCls = isParent ? parentCls : childCls;
+        const isMapped = mappedTitles && mappedTitles.has(node.title);
+        const isSelected = selectedTitle != null && node.title === selectedTitle;
+        const isHighlighted = highlightedKeys && highlightedKeys.includes(node.key);
+        const titleSpan = (className, content) => (
+            <span className={className} data-node-title={node.title} data-node-key={node.key}>
+                {content}
+            </span>
+        );
+        if (isMapped || isSelected) {
+            const selectedStyle = isSelected ? 'ring-2 ring-red-300 ring-offset-1 bg-white border border-red-200 rounded' : '';
+            return titleSpan(
+                `flex items-center gap-1.5 w-full min-w-0 rounded px-0.5 -mx-0.5 ${isSelected ? selectedStyle : ''} ${isHighlighted ? 'schema-search-hit' : ''}`,
+                <>
+                    {isMapped && <CheckCircleFilled className="text-emerald-500 text-xs shrink-0 flex-shrink-0" aria-hidden />}
+                    <span className={`${baseCls} ${isMapped && !isSelected ? 'bg-emerald-50 text-emerald-700 rounded px-1.5 py-0.5 border border-emerald-200/80' : ''} ${isSelected ? 'text-[#0F172A] font-semibold' : ''} truncate max-w-full`}>{node.title}</span>
+                </>
+            );
+        }
+        return titleSpan(`${baseCls} ${isHighlighted ? 'schema-search-hit' : ''}`, node.title);
+    }, []);
+
+    const renderSourceTreeTitle = useCallback((node) => renderSchemaTreeTitle(node, mappedSourceTitles, selectedLedgerMapping?.source, highlightedSourceKeys), [renderSchemaTreeTitle, mappedSourceTitles, selectedLedgerMapping?.source, highlightedSourceKeys]);
+    const renderTargetTreeTitle = useCallback((node) => renderSchemaTreeTitle(node, mappedTargetTitles, selectedLedgerMapping?.target, highlightedTargetKeys), [renderSchemaTreeTitle, mappedTargetTitles, selectedLedgerMapping?.target, highlightedTargetKeys]);
+
+    // When a ledger row is selected, scroll source/target tree nodes into view
+    useEffect(() => {
+        if (!selectedLedgerMapping) return;
+        const scrollToNode = (treeDataAttr, title) => {
+            if (!title) return;
+            const container = document.querySelector(`[data-tree="${treeDataAttr}"]`);
+            if (!container) return;
+            const nodes = container.querySelectorAll('[data-node-title]');
+            const el = Array.from(nodes).find(n => n.getAttribute('data-node-title') === title);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        };
+        const t = setTimeout(() => {
+            scrollToNode('source', selectedLedgerMapping.source);
+            scrollToNode('target', selectedLedgerMapping.target);
+        }, 100);
+        return () => clearTimeout(t);
+    }, [selectedLedgerMapping]);
 
     // Load mappings when opening a project (BA workspace or Dev project view)
     useEffect(() => {
@@ -476,15 +663,54 @@ export default function App() {
                             className={`${STYLES.sidebar} overflow-hidden shrink-0`}
                         >
                             <div className={STYLES.panelTitle}>
-                                <span className="flex items-center gap-2 truncate"><DatabaseOutlined className="text-emerald-500 shrink-0" /> SOURCE: {currentProject?.sourceSchema}</span>
+                                <span className="flex items-center gap-2 truncate"><DatabaseOutlined className="text-[#64748B] shrink-0" /> SOURCE: {currentProject?.sourceSchema}</span>
                             </div>
-                            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar">
+                            <div className="px-3 pt-2 pb-1 border-b border-[rgba(0,0,0,0.04)] shrink-0 relative">
+                                <Input
+                                    placeholder="Search source…"
+                                    value={sourceSchemaSearch}
+                                    onChange={e => setSourceSchemaSearch(e.target.value)}
+                                    allowClear
+                                    size="small"
+                                    prefix={<SearchOutlined className="text-[#94A3B8] text-xs" />}
+                                    className="text-xs rounded-lg border-[rgba(0,0,0,0.06)]"
+                                />
+                                {sourceSchemaSearch.trim() && sourceMatchNodes.length > 0 && (
+                                    <div className="absolute left-2 right-2 top-full mt-0.5 z-50 max-h-48 overflow-y-auto rounded-lg border border-[rgba(0,0,0,0.08)] bg-white shadow-lg custom-scrollbar py-0.5">
+                                        {sourceMatchNodes.map((n) => (
+                                            <button
+                                                key={n.key}
+                                                type="button"
+                                                className="w-full text-left px-3 py-1.5 text-xs font-mono text-[#334155] hover:bg-slate-50 border-0 cursor-pointer truncate block"
+                                                onClick={() => {
+                                                    setSelectedSourceNode(n);
+                                                    setSourceSchemaSearch('');
+                                                    setTimeout(() => scrollToNodeByKey('source', n.key), 80);
+                                                }}
+                                            >
+                                                {n.title}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 overflow-y-auto flex-1 custom-scrollbar" data-tree="source">
                                 <Tree
                                     showLine={{ showLeafIcon: false }}
                                     defaultExpandAll
-                                    treeData={SCHEMAS[currentProject?.sourceSchema] || SCHEMAS['EDI 834 v5010']}
-                                    onSelect={(_, {node}) => node.isLeaf && setSelectedSourceNode(node)}
+                                    treeData={getTreeForSchema(currentProject?.sourceSchema) || []}
+                                    selectedKeys={selectedSourceNode ? [selectedSourceNode.key] : []}
+                                    onSelect={(_, {node}) => {
+                                        if (!node.isLeaf) return;
+                                        if (awaitingSourcePickForEdit && selectedLedgerMapping) {
+                                            setSelectedLedgerMapping(prev => prev ? { ...prev, source: node.title } : null);
+                                            setAwaitingSourcePickForEdit(false);
+                                            message.success('Source updated – click Save to apply');
+                                        }
+                                        setSelectedSourceNode(node);
+                                    }}
                                     className="premium-tree"
+                                    titleRender={renderSourceTreeTitle}
                                 />
                             </div>
                         </aside>
@@ -492,7 +718,7 @@ export default function App() {
                             role="separator"
                             aria-label="Resize source panel"
                             onPointerDown={startResizeSource}
-                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-200 flex items-center justify-center select-none border-r-2 border-slate-200"
+                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-100 flex items-center justify-center select-none border-r border-[rgba(0,0,0,0.06)]"
                             style={{ touchAction: 'none', zIndex: 30 }}
                         >
                             <div className="w-1 h-20 rounded-full bg-slate-300 pointer-events-none" />
@@ -507,9 +733,9 @@ export default function App() {
                     <Header className={STYLES.premiumHeader}>
                         <div className={`flex items-center justify-start ${view === 'dashboard' ? 'flex-1 min-w-0' : 'shrink-0'}`} style={view !== 'dashboard' ? { minWidth: '6.5rem' } : undefined}>
                             {(view === 'wizard' || view === 'workspace' || view === 'dev-project') && (
-                                <button type="button" className="group flex items-center rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors w-full min-w-0" onClick={() => { setView('dashboard'); if (view !== 'wizard') setCurrentProject(null); }} aria-label="Back">
+                                <button type="button" className="group flex items-center rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors w-full min-w-0" onClick={() => { setView('dashboard'); if (view !== 'wizard') setCurrentProject(null); }} aria-label="Back">
                                     <ArrowLeftOutlined className="text-lg shrink-0" />
-                                    <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Back</span>
+                                    <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium text-[#334155]">Back</span>
                                 </button>
                             )}
                         </div>
@@ -519,11 +745,11 @@ export default function App() {
                                     <div className="bg-emerald-500 p-1.5 rounded-lg flex items-center justify-center shrink-0">
                                         <ThunderboltOutlined className="text-white text-lg" />
                                     </div>
-                                    <span className="font-black text-xl tracking-tighter text-slate-900 whitespace-nowrap">MappingStudio</span>
+                                    <span className="font-extrabold text-[1.35rem] tracking-tight text-[#0F172A] whitespace-nowrap header-brand">MappingStudio</span>
                                 </div>
-                                <div className="flex items-center rounded-lg border border-slate-200 p-0.5 bg-slate-50 shrink-0">
-                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'ba' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} onClick={() => setRole('ba')}>BA</button>
-                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'dev' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`} onClick={() => setRole('dev')}>Dev</button>
+                                <div className="flex items-center rounded-lg border border-[rgba(0,0,0,0.06)] p-0.5 bg-slate-50/80 shrink-0">
+                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'ba' ? 'bg-emerald-500 text-white shadow-sm' : 'text-[#64748B] hover:text-[#334155]'}`} onClick={() => setRole('ba')}>BA</button>
+                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'dev' ? 'bg-emerald-500 text-white shadow-sm' : 'text-[#64748B] hover:text-[#334155]'}`} onClick={() => setRole('dev')}>Dev</button>
                                 </div>
                             </Space>
                         </div>
@@ -531,20 +757,20 @@ export default function App() {
                             {userRole === 'ba' && view === 'workspace' && (
                                 <>
                                     <Tooltip title="Export Spec">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={handleExportExcel} aria-label="Export Spec">
-                                            <FileExcelOutlined className="text-lg shrink-0" />
-                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Export Spec</span>
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors" onClick={handleExportExcel} aria-label="Export Spec">
+                                            <FileExcelOutlined className="text-lg shrink-0 text-[#64748B] group-hover:text-[#10B981]" />
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium text-[#334155]">Export Spec</span>
                                         </button>
                                     </Tooltip>
                                     <Tooltip title="Publish Spec">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={() => message.info('Publish to SharePoint – coming soon')} aria-label="Publish Spec">
-                                            <CloudUploadOutlined className="text-lg shrink-0" />
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors" onClick={() => message.info('Publish to SharePoint – coming soon')} aria-label="Publish Spec">
+                                            <CloudUploadOutlined className="text-lg shrink-0 text-[#64748B] group-hover:text-[#10B981]" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Publish Spec</span>
                                         </button>
                                     </Tooltip>
                                     <Tooltip title="Ready for Development">
                                         <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={() => handleMarkReadyForDevelopment()} aria-label="Ready for Development">
-                                            <CheckCircleFilled className="text-lg shrink-0" />
+                                            <CheckCircleFilled className="text-lg shrink-0 text-white" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[10rem] transition-[max-width] duration-300 ease-out ml-1.5">Ready for Development</span>
                                         </button>
                                     </Tooltip>
@@ -553,14 +779,14 @@ export default function App() {
                             {userRole === 'dev' && view === 'dev-project' && (
                                 <>
                                     <Tooltip title="Download Excel">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-slate-500 hover:text-emerald-600 hover:bg-slate-50 p-2 transition-colors" onClick={handleExportExcel} aria-label="Download Excel">
-                                            <FileExcelOutlined className="text-lg shrink-0" />
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors" onClick={handleExportExcel} aria-label="Download Excel">
+                                            <FileExcelOutlined className="text-lg shrink-0 text-[#64748B] group-hover:text-[#10B981]" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Download Excel</span>
                                         </button>
                                     </Tooltip>
                                     <Tooltip title="Generate Map">
                                         <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={() => message.info('Generate Map – coming soon')} aria-label="Generate Map">
-                                            <ToolOutlined className="text-lg shrink-0" />
+                                            <ToolOutlined className="text-lg shrink-0 text-white" />
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5">Generate Map</span>
                                         </button>
                                     </Tooltip>
@@ -580,9 +806,15 @@ export default function App() {
                                 onNew={() => setView('wizard')}
                                 onSelect={(p) => {
                                     setCurrentProject(p);
+                                    setSelectedLedgerMapping(null);
+                                    setSelectedSourceNode(null);
+                                    setSelectedTargetNode(null);
+                                    setAwaitingSourcePickForEdit(false);
+                                    setAwaitingTargetPickForEdit(false);
                                     setView(userRole === 'dev' ? 'dev-project' : 'workspace');
                                 }}
                                 onDelete={handleDeleteProject}
+                                fetchWithAuth={fetchWithAuth}
                             />
                         )}
                         {view === 'wizard' && userRole === 'ba' && (
@@ -599,10 +831,16 @@ export default function App() {
                                     setMappings={setMappings}
                                     selectedSource={selectedSourceNode}
                                     setSelectedSource={setSelectedSourceNode}
-                                    fetchWithAuth={fetchWithAuth}
                                     selectedTarget={selectedTargetNode}
                                     setSelectedTarget={setSelectedTargetNode}
-                                    onBack={() => { setView('dashboard'); setCurrentProject(null); }}
+                                    selectedLedgerMapping={selectedLedgerMapping}
+                                    setSelectedLedgerMapping={setSelectedLedgerMapping}
+                                    awaitingSourcePickForEdit={awaitingSourcePickForEdit}
+                                    setAwaitingSourcePickForEdit={setAwaitingSourcePickForEdit}
+                                    awaitingTargetPickForEdit={awaitingTargetPickForEdit}
+                                    setAwaitingTargetPickForEdit={setAwaitingTargetPickForEdit}
+                                    fetchWithAuth={fetchWithAuth}
+                                    onBack={() => { setView('dashboard'); setCurrentProject(null); setSelectedLedgerMapping(null); setAwaitingSourcePickForEdit(false); setAwaitingTargetPickForEdit(false); }}
                                 />
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-full gap-4 p-8">
@@ -615,15 +853,24 @@ export default function App() {
                             <DevProjectView project={currentProject} mappings={mappings} onBack={() => { setCurrentProject(null); setView('dashboard'); }} />
                         )}
                         {/* Fallback: BA in dev-project view or any unmatched state -> show dashboard */}
-                        {view === 'dev-project' && userRole === 'ba' && (
-                            <Dashboard
-                                projects={projects}
-                                userRole={userRole}
-                                onNew={() => setView('wizard')}
-                                onSelect={(p) => { setCurrentProject(p); setView('workspace'); }}
-                                onDelete={handleDeleteProject}
-                            />
-                        )}
+{view === 'dev-project' && userRole === 'ba' && (
+                                <Dashboard
+                                    projects={projects}
+                                    userRole={userRole}
+                                    onNew={() => setView('wizard')}
+                                    onSelect={(p) => {
+                                        setCurrentProject(p);
+                                        setSelectedLedgerMapping(null);
+                                        setSelectedSourceNode(null);
+                                        setSelectedTargetNode(null);
+                                        setAwaitingSourcePickForEdit(false);
+                                        setAwaitingTargetPickForEdit(false);
+                                        setView('workspace');
+                                    }}
+                                    onDelete={handleDeleteProject}
+                                    fetchWithAuth={fetchWithAuth}
+                                />
+                            )}
                     </div>
                 </main>
 
@@ -633,7 +880,7 @@ export default function App() {
                             role="separator"
                             aria-label="Resize target panel"
                             onPointerDown={startResizeTarget}
-                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-200 flex items-center justify-center select-none border-l-2 border-slate-200"
+                            className="h-full w-4 flex-shrink-0 cursor-col-resize hover:bg-emerald-100 flex items-center justify-center select-none border-l border-[rgba(0,0,0,0.06)]"
                             style={{ touchAction: 'none', zIndex: 30 }}
                         >
                             <div className="w-1 h-20 rounded-full bg-slate-300 pointer-events-none" />
@@ -651,15 +898,54 @@ export default function App() {
                         >
                             <aside className={`${STYLES.sidebar} border-r-0 flex-1 flex flex-col min-w-0 w-full`} style={{ width: '100%' }}>
                                 <div className={STYLES.panelTitle}>
-                                    <span className="flex items-center gap-2 truncate min-w-0"><DeploymentUnitOutlined className="text-emerald-500 shrink-0" /> TARGET: {currentProject?.targetSchema}</span>
+                                    <span className="flex items-center gap-2 truncate min-w-0"><DeploymentUnitOutlined className="text-[#64748B] shrink-0" /> TARGET: {currentProject?.targetSchema}</span>
                                 </div>
-                                <div className="p-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar">
+                                <div className="px-3 pt-2 pb-1 border-b border-[rgba(0,0,0,0.04)] shrink-0 relative">
+                                    <Input
+                                        placeholder="Search target…"
+                                        value={targetSchemaSearch}
+                                        onChange={e => setTargetSchemaSearch(e.target.value)}
+                                        allowClear
+                                        size="small"
+                                        prefix={<SearchOutlined className="text-[#94A3B8] text-xs" />}
+                                        className="text-xs rounded-lg border-[rgba(0,0,0,0.06)]"
+                                    />
+                                    {targetSchemaSearch.trim() && targetMatchNodes.length > 0 && (
+                                        <div className="absolute left-2 right-2 top-full mt-0.5 z-50 max-h-48 overflow-y-auto rounded-lg border border-[rgba(0,0,0,0.08)] bg-white shadow-lg custom-scrollbar py-0.5">
+                                            {targetMatchNodes.map((n) => (
+                                                <button
+                                                    key={n.key}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-1.5 text-xs font-mono text-emerald-700 hover:bg-emerald-50/80 border-0 cursor-pointer truncate block"
+                                                    onClick={() => {
+                                                        setSelectedTargetNode(n);
+                                                        setTargetSchemaSearch('');
+                                                        setTimeout(() => scrollToNodeByKey('target', n.key), 80);
+                                                    }}
+                                                >
+                                                    {n.title}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar" data-tree="target">
                                     <Tree
                                         showLine={{ showLeafIcon: false }}
                                         defaultExpandAll
-                                        treeData={TARGET_CANONICAL_TREE}
-                                        onSelect={(_, {node}) => node.isLeaf && setSelectedTargetNode(node)}
+                                        treeData={getTreeForSchema(currentProject?.targetSchema) || []}
+                                        selectedKeys={selectedTargetNode ? [selectedTargetNode.key] : []}
+                                        onSelect={(_, {node}) => {
+                                            if (!node.isLeaf) return;
+                                            if (awaitingTargetPickForEdit && selectedLedgerMapping) {
+                                                setSelectedLedgerMapping(prev => prev ? { ...prev, target: node.title } : null);
+                                                setAwaitingTargetPickForEdit(false);
+                                                message.success('Target updated – click Save to apply');
+                                            }
+                                            setSelectedTargetNode(node);
+                                        }}
                                         className="premium-tree"
+                                        titleRender={renderTargetTreeTitle}
                                     />
                                 </div>
                             </aside>
@@ -671,10 +957,14 @@ export default function App() {
     );
 }
 
-function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
+function Dashboard({ projects, userRole, onNew, onSelect, onDelete, fetchWithAuth }) {
     const isDev = userRole === 'dev';
     const readyForDevList = projects.filter(p => p.status === 'Ready for Development');
     const inProgressList = projects.filter(p => p.status !== 'Ready for Development');
+    const [trainingModalOpen, setTrainingModalOpen] = useState(false);
+    const [trainingFile, setTrainingFile] = useState(null);
+    const [trainingLoading, setTrainingLoading] = useState(false);
+    const [trainingResult, setTrainingResult] = useState(null);
 
     const renderProjectCard = (p) => {
         const readyForDev = p.status === 'Ready for Development';
@@ -694,15 +984,15 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
                 onClick={cardClick}
             >
                 <div className="flex justify-between items-start mb-4">
-                    <Title level={4} className="m-0 text-slate-800 tracking-tight flex-1 min-w-0 pr-2">{p.name}</Title>
+                    <Title level={4} className="m-0 text-[#0F172A] tracking-tight flex-1 min-w-0 pr-2">{p.name}</Title>
                     <div className="flex items-center gap-1 shrink-0">
                         {!isDev && (
                             <Button
                                 type="text"
                                 danger
                                 size="small"
-                                icon={<DeleteOutlined />}
-                                className="opacity-50 hover:opacity-100"
+                                icon={<DeleteOutlined className="text-[#94A3B8] hover:text-red-400" />}
+                                className="text-[#64748B]"
                                 onClick={(e) => onDelete(p.id, e)}
                                 aria-label="Delete project"
                             />
@@ -710,15 +1000,15 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
                     </div>
                 </div>
                 <div className="flex items-center gap-2 mb-6">
-                    <Tag className="m-0 bg-slate-50 border-slate-100 text-slate-500 font-mono text-[10px]">{p.sourceSchema}</Tag>
-                    <ArrowRightOutlined className="text-slate-300 text-[10px]" />
+                    <Tag className="m-0 bg-slate-100/80 border-[rgba(0,0,0,0.04)] text-[#64748B] font-mono text-[10px]">{p.sourceSchema}</Tag>
+                    <ArrowRightOutlined className="text-[#94A3B8] text-[10px]" />
                     <Tag className="m-0 bg-emerald-50 border-emerald-100 text-emerald-600 font-mono text-[10px]">{p.targetSchema}</Tag>
                 </div>
-                <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                <div className="flex justify-between text-[10px] font-bold text-[#64748B] uppercase tracking-widest mb-2">
                     <span>Coverage</span>
                     <span>{p.coverage ?? 0}%</span>
                 </div>
-                <div className="h-1.5 w-full bg-slate-50 rounded-full overflow-hidden">
+                <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${p.coverage ?? 0}%` }} />
                 </div>
             </Card>
@@ -731,37 +1021,146 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
             style={{ width: '100%', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}
         >
             <div
-                className="px-6 py-10 box-border"
+                className="px-6 py-10 box-border relative"
                 style={{ width: '100%', maxWidth: '64rem', marginLeft: 'auto', marginRight: 'auto' }}
             >
-                <div className="mb-10 text-center">
-                    <Title level={2} className="font-black text-slate-900 mb-3">Enterprise Data Orchestration</Title>
-                    <Text className="text-slate-400 text-base block">
-                        {isDev ? 'View mapping specs published by BA. Select a project to view Excel in-app or download.' : 'Initialize a mapping project to begin schema synchronization.'}
-                    </Text>
+                {/* Training: top right corner — robot coach logo (see docs/MASCOT_AND_ASSETS.md) */}
+                <button
+                    type="button"
+                    onClick={() => { setTrainingModalOpen(true); setTrainingResult(null); setTrainingFile(null); }}
+                    className="absolute top-6 right-6 flex items-center gap-2 px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.06)] bg-white/80 hover:bg-slate-50 hover:border-[rgba(0,0,0,0.1)] transition-colors shadow-sm group"
+                    aria-label="Open AI Training — Import Excel mapping spec"
+                >
+                    <span className="shrink-0 w-11 h-11 flex items-center justify-center rounded-full overflow-hidden border border-slate-200 bg-slate-50" aria-hidden>
+                        <svg width="44" height="44" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                            <circle cx="24" cy="24" r="22" fill="#E0F2FE" stroke="#0EA5E9" strokeWidth="2" />
+                            <path d="M14 26h6v2h-6z M28 26h6v2h-6z M24 12v-2 M22 14l-2-2 M26 14l2-2" stroke="#64748B" strokeWidth="1" strokeLinecap="round" fill="none" opacity="0.8" />
+                            <circle cx="24" cy="18" r="7" fill="white" stroke="#334155" strokeWidth="1.2" />
+                            <ellipse cx="21" cy="17" rx="2" ry="2.2" fill="#EA580C" />
+                            <ellipse cx="27" cy="17" rx="2" ry="2.2" fill="#EA580C" />
+                            <circle cx="21.5" cy="17" r="0.5" fill="white" />
+                            <circle cx="27.5" cy="17" r="0.5" fill="white" />
+                            <path d="M19 21.5 Q24 24 29 21.5" stroke="#334155" strokeWidth="1.2" strokeLinecap="round" fill="none" />
+                            <rect x="16" y="26" width="16" height="12" rx="2" fill="white" stroke="#334155" strokeWidth="1" />
+                            <rect x="16" y="30" width="16" height="3" fill="#DC2626" />
+                            <line x1="20" y1="31" x2="20" y2="32.5" stroke="white" strokeWidth="0.6" />
+                            <line x1="24" y1="31" x2="24" y2="32.5" stroke="white" strokeWidth="0.6" />
+                            <line x1="28" y1="31" x2="28" y2="32.5" stroke="white" strokeWidth="0.6" />
+                            <rect x="18" y="34" width="5" height="3" rx="0.5" fill="#94A3B8" stroke="#64748B" strokeWidth="0.5" />
+                            <line x1="19" y1="35" x2="22" y2="35" stroke="#64748B" strokeWidth="0.4" />
+                            <rect x="25" y="34" width="5" height="3" rx="0.5" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="0.5" />
+                        </svg>
+                    </span>
+                    <span className="text-xs font-medium text-[#64748B] group-hover:text-[#334155] hidden sm:inline">Train AI</span>
+                    <FileExcelOutlined className="text-[#94A3B8] group-hover:text-emerald-500 text-sm shrink-0" />
+                </button>
+
+                <div className="mb-10">
+                    <div className="text-center mb-6">
+                        <Title level={2} className="font-black text-[#0F172A] mb-3">Enterprise Data Orchestration</Title>
+                        <Text className="text-[#64748B] text-base block">
+                            {isDev ? 'View mapping specs published by BA. Select a project to view Excel in-app or download.' : 'Initialize a mapping project to begin schema synchronization.'}
+                        </Text>
+                    </div>
+                    {!isDev && (
+                        <div className="flex justify-center mb-10">
+                            <Button
+                                type="primary"
+                                size="large"
+                                icon={<PlusOutlined />}
+                                className="h-12 px-8 font-bold rounded-xl shadow-sm"
+                                onClick={onNew}
+                            >
+                                Create Project
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
-                {!isDev && (
-                    <div className="flex justify-center mb-10">
+                {/* Training modal: Import Excel mapping spec */}
+                <Modal
+                    title={
+                        <span className="flex items-center gap-2">
+                            <span className="text-xl">🎓</span>
+                            <span>AI Training — Import mapping spec</span>
+                        </span>
+                    }
+                    open={trainingModalOpen}
+                    onCancel={() => { setTrainingModalOpen(false); setTrainingFile(null); setTrainingResult(null); }}
+                    footer={[
+                        <Button key="cancel" onClick={() => { setTrainingModalOpen(false); setTrainingFile(null); setTrainingResult(null); }}>Cancel</Button>,
                         <Button
+                            key="import"
                             type="primary"
-                            size="large"
-                            icon={<PlusOutlined />}
-                            className="h-12 px-8 font-bold rounded-xl shadow-sm"
-                            onClick={onNew}
+                            icon={<FileExcelOutlined />}
+                            loading={trainingLoading}
+                            disabled={!trainingFile || !fetchWithAuth}
+                            onClick={async () => {
+                                if (!trainingFile || !fetchWithAuth) return;
+                                setTrainingLoading(true);
+                                setTrainingResult(null);
+                                try {
+                                    const form = new FormData();
+                                    form.append('file', trainingFile);
+                                    const res = await fetchWithAuth(`${API}/ai/import-spec`, { method: 'POST', body: form });
+                                    const raw = await res.text();
+                                    let data = {};
+                                    try { if (raw) data = JSON.parse(raw); } catch (_) {}
+                                    if (!res.ok) {
+                                        setTrainingResult({ error: data?.message || data?.error || raw || res.statusText });
+                                        return;
+                                    }
+                                    setTrainingResult({ learned: data.learned ?? 0 });
+                                    message.success(`✨ Imported ${data.learned ?? 0} mapping(s) — AI suggestions will improve!`);
+                                } catch (e) {
+                                    setTrainingResult({ error: e.message || 'Upload failed' });
+                                } finally {
+                                    setTrainingLoading(false);
+                                }
+                            }}
                         >
-                            Create Project
+                            Import
                         </Button>
+                    ]}
+                >
+                    <div className="space-y-4">
+                        <Text type="secondary" className="text-sm block">
+                            Upload an Excel (.xlsx) file with columns: <strong>Source Field</strong>, <strong>Mapping Logic</strong>, <strong>Target Field</strong>.
+                            Each row is recorded so future AI suggestions use your spec — no LLM required.
+                        </Text>
+                        <div className="flex flex-wrap gap-2 text-xs text-[#64748B] pb-2">
+                            <Tag color="blue">📋 Standard columns</Tag>
+                            <Tag color="green">🔒 Scanned & secure</Tag>
+                            <Tag color="purple">🧠 Learns from you</Tag>
+                        </div>
+                        <input
+                            type="file"
+                            accept=".xlsx"
+                            className="block w-full text-sm p-2 border border-dashed border-[rgba(0,0,0,0.12)] rounded-lg hover:border-emerald-400 transition-colors"
+                            onChange={e => { setTrainingFile(e.target.files?.[0] ?? null); setTrainingResult(null); }}
+                        />
+                        {trainingResult?.learned != null && (
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+                                <span className="text-lg">✅</span>
+                                <Text className="text-emerald-700 text-sm m-0">Imported {trainingResult.learned} mapping(s). Suggestions will improve as you map.</Text>
+                            </div>
+                        )}
+                        {trainingResult?.error && (
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                                <span className="text-lg">⚠️</span>
+                                <Text type="danger" className="text-sm m-0">{trainingResult.error}</Text>
+                            </div>
+                        )}
                     </div>
-                )}
+                </Modal>
 
                 {projects.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-slate-100 rounded-2xl bg-slate-50/50">
-                        <div className="w-14 h-14 bg-white rounded-xl shadow-sm flex items-center justify-center mb-4 text-slate-300 border border-slate-100">
+                    <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-[rgba(0,0,0,0.06)] rounded-2xl bg-slate-50/50">
+                        <div className="w-14 h-14 bg-slate-50 rounded-xl flex items-center justify-center mb-4 text-[#94A3B8] border border-[rgba(0,0,0,0.04)]">
                             <PlusOutlined style={{ fontSize: 22 }} />
                         </div>
-                        <Title level={4} className="text-slate-700 m-0 mb-1">{isDev ? 'No Projects Yet' : 'No Active Projects'}</Title>
-                        <Text className="text-slate-400 text-sm">{isDev ? 'No mapping specs have been published yet.' : 'Create your first mapping project above.'}</Text>
+                        <Title level={4} className="text-[#334155] m-0 mb-1">{isDev ? 'No Projects Yet' : 'No Active Projects'}</Title>
+                        <Text className="text-[#64748B] text-sm">{isDev ? 'No mapping specs have been published yet.' : 'Create your first mapping project above.'}</Text>
                     </div>
                 ) : (
                     <div className="space-y-10">
@@ -781,8 +1180,8 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
                             <section>
                                 <div className="flex items-center gap-2 mb-4">
                                     <div className="h-1 w-8 rounded-full bg-slate-300" />
-                                    <h3 className="m-0 text-sm font-bold uppercase tracking-wider text-slate-500">Spec creation in progress</h3>
-                                    <Tag className="m-0 text-[10px] font-bold border-slate-200">{inProgressList.length}</Tag>
+                                    <h3 className="m-0 text-sm font-bold uppercase tracking-wider text-[#64748B]">Spec creation in progress</h3>
+                                    <Tag className="m-0 text-[10px] font-bold border-[rgba(0,0,0,0.06)]">{inProgressList.length}</Tag>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {inProgressList.map(renderProjectCard)}
@@ -797,39 +1196,58 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete }) {
 }
 
 function DevProjectView({ project, mappings, onBack }) {
+    const [reviewFilter, setReviewFilter] = useState('all');
+    const filteredMappings = reviewFilter === 'marked' ? (mappings || []).filter(m => m.reviewLater) : (mappings || []);
     const columns = [
-        { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-slate-600">{t ?? '—'}</span> },
-        { title: 'Mapping Logic', dataIndex: 'logic', key: 'logic', render: t => <code className="text-xs text-slate-500 block max-w-md truncate">{t ?? '—'}</code> },
+        { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-[#334155]">{t ?? '—'}</span> },
+        { title: 'Mapping Logic', dataIndex: 'logic', key: 'logic', render: t => <code className="text-xs text-[#64748B] block max-w-md truncate">{t ?? '—'}</code> },
         { title: 'Target Field', dataIndex: 'target', key: 'target', render: t => <span className="font-mono text-xs text-emerald-600">{t ?? '—'}</span> },
-        { title: 'Comments', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-slate-400">{t ?? '—'}</span> },
+        { title: 'Comments', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-[#64748B]">{t ?? '—'}</span> },
+        {
+            title: 'Review',
+            dataIndex: 'reviewLater',
+            key: 'reviewLater',
+            width: 72,
+            align: 'center',
+            render: (_, r) => r.reviewLater ? <FlagFilled className="text-amber-500" /> : <span className="text-[#94A3B8]">—</span>
+        },
     ];
     return (
         <Content className="p-10 overflow-y-auto custom-scrollbar">
             <div className="max-w-5xl mx-auto space-y-6">
                 <div className="flex items-center gap-4 mb-6">
-                    <Button type="text" onClick={onBack} className="text-slate-500">← Back to projects</Button>
+                    <Button type="text" onClick={onBack} className="text-[#64748B] hover:text-[#10B981]">← Back to projects</Button>
                 </div>
-                <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
-                    <Title level={4} className="m-0 mb-2 text-slate-800">{project?.name ?? 'Project'}</Title>
+                <div className="bg-white border border-[rgba(0,0,0,0.06)] rounded-2xl p-8 bg-slate-50/20">
+                    <Title level={4} className="m-0 mb-2 text-[#0F172A]">{project?.name ?? 'Project'}</Title>
                     <Text type="secondary" className="text-sm">
                         {project?.sourceSchema} → {project?.targetSchema}
                     </Text>
                 </div>
-                <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                    <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mapping spec (Excel view)</span>
+                <div className="bg-white border border-[rgba(0,0,0,0.06)] rounded-2xl overflow-hidden bg-slate-50/20">
+                    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.04)] bg-slate-50/50 flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.12em]">Mapping spec (Excel view)</span>
+                        <Segmented
+                            size="small"
+                            value={reviewFilter}
+                            onChange={setReviewFilter}
+                            options={[
+                                { label: 'All', value: 'all' },
+                                { label: `Marked for review (${(mappings || []).filter(m => m.reviewLater).length})`, value: 'marked' }
+                            ]}
+                        />
                     </div>
                     <Table
-                        dataSource={mappings}
+                        dataSource={filteredMappings}
                         columns={columns}
                         rowKey="id"
                         pagination={false}
                         size="small"
-                        locale={{ emptyText: <div className="py-10 text-slate-400 text-xs">No mapping rules in this spec.</div> }}
+                        locale={{ emptyText: <div className="py-10 text-[#64748B] text-xs">No mapping rules in this spec.</div> }}
                         className="studio-table"
                     />
                 </div>
-                <Text className="text-xs text-slate-400 block">Use header actions to Download Excel or Generate Map.</Text>
+                <Text className="text-xs text-[#64748B] block">Use header actions to Download Excel or Generate Map.</Text>
             </div>
         </Content>
     );
@@ -842,22 +1260,22 @@ function ProjectWizard({ onCancel, onFinish }) {
 
     return (
         <div className="w-full flex-1 flex items-center justify-center min-h-0 p-6">
-            <Card className="max-w-lg w-full shadow-2xl border-none p-6 rounded-3xl shrink-0 mx-auto" style={{ maxWidth: '32rem' }}>
-                <Button type="text" icon={<ArrowLeftOutlined />} className="text-slate-500 hover:text-emerald-600 -ml-1 mb-4 pl-0" onClick={onCancel}>
+            <Card className="max-w-lg w-full border border-[rgba(0,0,0,0.06)] p-6 rounded-3xl shrink-0 mx-auto bg-white" style={{ maxWidth: '32rem' }}>
+                <Button type="text" icon={<ArrowLeftOutlined />} className="text-[#64748B] hover:text-[#10B981] -ml-1 mb-4 pl-0" onClick={onCancel}>
                     Back to Dashboard
                 </Button>
                 <div className="mb-8 text-center">
-                    <Title level={3} className="mb-1 font-black">Configure Mapping Flow</Title>
-                    <Text type="secondary">Define your project namespace and schema requirements.</Text>
+                    <Title level={3} className="mb-1 font-black text-[#0F172A]">Configure Mapping Flow</Title>
+                    <Text className="text-[#64748B] text-sm">Define your project namespace and schema requirements.</Text>
                 </div>
 
                 <div className="space-y-6">
                     <div>
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3 block">Project Namespace</label>
+                        <label className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em] mb-3 block">Project Namespace</label>
                         <Input
                             size="large"
                             placeholder="e.g. HealthLink_834_Prod"
-                            className="h-12 border-slate-100 bg-slate-50 font-mono text-sm"
+                            className="h-12 border-[rgba(0,0,0,0.06)] bg-slate-50/80 font-mono text-sm text-[#334155] placeholder:text-[#94A3B8]"
                             value={name}
                             onChange={e => setName(e.target.value)}
                         />
@@ -865,7 +1283,7 @@ function ProjectWizard({ onCancel, onFinish }) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3 block">Source Format</label>
+                            <label className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em] mb-3 block">Source Format</label>
                             <Select size="large" className="w-full h-12" value={source} onChange={setSource}>
                                 {SCHEMA_FORMATS.map(k => (
                                     <Select.Option key={k} value={k}>{k}</Select.Option>
@@ -873,7 +1291,7 @@ function ProjectWizard({ onCancel, onFinish }) {
                             </Select>
                         </div>
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3 block">Target Format</label>
+                            <label className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em] mb-3 block">Target Format</label>
                             <Select size="large" className="w-full h-12" value={target} onChange={setTarget}>
                                 {SCHEMA_FORMATS.map(k => (
                                     <Select.Option key={k} value={k}>{k}</Select.Option>
@@ -900,10 +1318,19 @@ function ProjectWizard({ onCancel, onFinish }) {
     );
 }
 
-function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget, onBack, fetchWithAuth }) {
+function MappingWorkspace({ project, mappings, setMappings, selectedSource, setSelectedSource, selectedTarget, setSelectedTarget, selectedLedgerMapping, setSelectedLedgerMapping, awaitingSourcePickForEdit, setAwaitingSourcePickForEdit, awaitingTargetPickForEdit, setAwaitingTargetPickForEdit, onBack, fetchWithAuth }) {
     const [logic, setLogic] = useState('');
+    const [comment, setComment] = useState('');
+    const [reviewLater, setReviewLater] = useState(false);
+    const [reviewFilter, setReviewFilter] = useState('all'); // 'all' | 'marked'
     const [isAiThinking, setIsAiThinking] = useState(false);
     const [aiSuggestions, setAiSuggestions] = useState([]);
+    const [editLogic, setEditLogic] = useState('');
+    const [editComment, setEditComment] = useState('');
+    const [findQuery, setFindQuery] = useState('');
+    const [debouncedFindQuery, setDebouncedFindQuery] = useState('');
+    const [composerFlashGreen, setComposerFlashGreen] = useState(false);
+    const composerRef = useRef(null);
 
     if (!project) {
         return (
@@ -923,7 +1350,10 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         if (!src || !tgt || !fetchWithAuth) return;
         setIsAiThinking(true);
         try {
-            const res = await fetchWithAuth(`${API}/ai/suggest?source=${src.key}&target=${tgt.key}`, { method: "POST" });
+            const params = new URLSearchParams({ source: src.key, target: tgt.key });
+            if (src.title) params.set('sourceTitle', src.title);
+            if (tgt.title) params.set('targetTitle', tgt.title);
+            const res = await fetchWithAuth(`${API}/ai/suggest?${params.toString()}`, { method: "POST" });
             const data = await res.json();
             const list = Array.isArray(data) ? data : [];
             setAiSuggestions(list.length > 0 ? list : defaultSuggestions(src, tgt));
@@ -942,6 +1372,30 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         }
     }, [selectedSource, selectedTarget, getAiSuggestions]);
 
+    useEffect(() => {
+        if (selectedLedgerMapping) {
+            setEditLogic(selectedLedgerMapping.logic ?? '');
+            setEditComment(selectedLedgerMapping.comments ?? '');
+        }
+    }, [selectedLedgerMapping]);
+
+    // Reset composer when switching to a different project (no pre-populated logic/comment)
+    useEffect(() => {
+        setLogic('');
+        setComment('');
+        setReviewLater(false);
+        setEditLogic('');
+        setEditComment('');
+        setAiSuggestions([]);
+    }, [project?.id]);
+
+    useEffect(() => {
+        if (composerFlashGreen) {
+            const t = setTimeout(() => setComposerFlashGreen(false), 2500);
+            return () => clearTimeout(t);
+        }
+    }, [composerFlashGreen]);
+
     const commitMapping = async () => {
         if (!selectedSource || !selectedTarget) {
             message.warning("Select both source and target elements first");
@@ -955,6 +1409,8 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             source: selectedSource.title,
             target: selectedTarget.title,
             logic: finalLogic,
+            comments: comment || undefined,
+            reviewLater: reviewLater || undefined,
         };
 
         try {
@@ -966,7 +1422,9 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                     projectName: project.name,
                     source: selectedSource.title,
                     target: selectedTarget.title,
-                    logic: finalLogic
+                    logic: finalLogic,
+                    comments: comment || null,
+                    reviewLater: reviewLater || false
                 })
             });
 
@@ -975,6 +1433,8 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             const saved = await response.json();
             setMappings([saved, ...mappings]);
             setLogic('');
+            setComment('');
+            setReviewLater(false);
             setSelectedSource(null);
             setSelectedTarget(null);
             message.success({
@@ -991,129 +1451,368 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         {
             title: 'Source Element',
             dataIndex: 'source',
-            render: t => <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-1 rounded">{t}</span>
+            render: t => <span className="font-mono text-[10px] font-semibold text-[#334155] bg-slate-100/80 px-2 py-1 rounded border border-[rgba(0,0,0,0.04)]">{t}</span>
         },
-        { title: '', width: 40, render: () => <ArrowRightOutlined className="text-slate-200" /> },
+        { title: '', width: 40, render: () => <ArrowRightOutlined className="text-[#94A3B8]" /> },
         {
             title: 'Target Element',
             dataIndex: 'target',
-            render: t => <span className="font-mono text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">{t}</span>
+            render: t => <span className="font-mono text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded border border-emerald-100/80">{t}</span>
         },
         {
             title: 'Execution Logic',
             dataIndex: 'logic',
-            render: t => <code className="text-[10px] text-slate-400 block max-w-xs truncate">{t}</code>
+            render: t => <code className="text-[10px] text-[#64748B] block max-w-xs truncate">{t}</code>
+        },
+        {
+            title: 'Comments',
+            dataIndex: 'comments',
+            width: 160,
+            ellipsis: true,
+            render: t => <span className="text-[10px] text-[#64748B] block max-w-[10rem] truncate" title={t}>{t ?? '—'}</span>
+        },
+        {
+            title: 'Review',
+            dataIndex: 'reviewLater',
+            width: 64,
+            align: 'center',
+            render: (_, record) => (
+                <Tooltip title={record.reviewLater ? 'Marked for review (click to clear)' : 'Mark for review later'}>
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={record.reviewLater ? <FlagFilled className="text-amber-500" /> : <FlagOutlined className="text-[#94A3B8] hover:text-[#10B981]" />}
+                        onClick={async (e) => {
+                            e.stopPropagation();
+                            const next = !record.reviewLater;
+                            if (record.id != null) {
+                                try {
+                                    const res = await fetchWithAuth(`${API}/mappings/${record.id}`, {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ reviewLater: next })
+                                    });
+                                    if (res.ok) {
+                                        const updated = await res.json();
+                                        setMappings(mappings.map(m => m.id === record.id ? updated : m));
+                                    }
+                                } catch (e) { message.error('Failed to update'); }
+                            } else {
+                                setMappings(mappings.map(m => m === record ? { ...m, reviewLater: next } : m));
+                            }
+                        }}
+                    />
+                </Tooltip>
+            )
+        },
+        {
+            title: '',
+            align: 'center',
+            width: 48,
+            render: (_, record) => (
+                <Tooltip title="Edit in composer">
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<EditOutlined className="text-[#94A3B8] hover:text-[#10B981]" />}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLedgerMapping(record);
+                            setTimeout(() => {
+                                composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }, 50);
+                            setComposerFlashGreen(true);
+                        }}
+                    />
+                </Tooltip>
+            )
         },
         {
             title: '',
             align: 'right',
+            width: 48,
             render: (_, record) => (
                 <Button
                     type="text"
                     danger
                     size="small"
-                    icon={<DeleteOutlined className="opacity-30 hover:opacity-100" />}
-                    onClick={async () => {
+                    icon={<DeleteOutlined className="text-[#94A3B8] hover:text-red-400" />}
+                    onClick={async (e) => {
+                        e.stopPropagation();
                         if (record.id != null) {
-                            try {
-                                const res = await fetchWithAuth(`${API}/mappings/${record.id}`, { method: 'DELETE' });
-                                if (res.ok) setMappings(mappings.filter(m => m.id !== record.id));
-                            } catch (e) { message.error('Failed to delete from backend'); }
-                        } else {
-                            setMappings(mappings.filter(m => m.id !== record.id));
-                        }
+                                try {
+                                    const res = await fetchWithAuth(`${API}/mappings/${record.id}`, { method: 'DELETE' });
+                                    if (res.ok) {
+                                        setMappings(mappings.filter(m => m.id !== record.id));
+                                        if (selectedLedgerMapping?.id === record.id) setSelectedLedgerMapping(null);
+                                    }
+                                } catch (e) { message.error('Failed to delete from backend'); }
+                            } else {
+                                setMappings(mappings.filter(m => m.id !== record.id));
+                                if (selectedLedgerMapping === record) setSelectedLedgerMapping(null);
+                            }
                     }}
                 />
             )
         }
     ];
 
+    const filteredMappings = reviewFilter === 'marked' ? mappings.filter(m => m.reviewLater) : mappings;
+
+    // Debounce search so table filter updates smoothly (not on every keystroke)
+    useEffect(() => {
+        const q = (findQuery || '').trim();
+        const t = setTimeout(() => setDebouncedFindQuery(q), 220);
+        return () => clearTimeout(t);
+    }, [findQuery]);
+
+    const ledgerDisplayMappings = useMemo(() => {
+        const q = (debouncedFindQuery || '').trim().toLowerCase();
+        if (!q) return filteredMappings;
+        return filteredMappings.filter(m => {
+            const src = (m.source || '').toLowerCase();
+            const tgt = (m.target || '').toLowerCase();
+            const cmt = (m.comments || '').toLowerCase();
+            const logic = (m.logic || '').toLowerCase();
+            return src.includes(q) || tgt.includes(q) || cmt.includes(q) || logic.includes(q);
+        });
+    }, [filteredMappings, debouncedFindQuery]);
+
+    const handleSaveEdit = async () => {
+        if (!selectedLedgerMapping) return;
+        const id = selectedLedgerMapping.id;
+        if (id == null) {
+            message.warning('Cannot save: unsaved mapping. Apply from composer instead.');
+            return;
+        }
+        try {
+            const res = await fetchWithAuth(`${API}/mappings/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source: selectedLedgerMapping.source ?? undefined,
+                    target: selectedLedgerMapping.target ?? undefined,
+                    logic: editLogic,
+                    comments: editComment || null
+                })
+            });
+            if (!res.ok) throw new Error('Update failed');
+            const updated = await res.json();
+            setMappings(mappings.map(m => m.id === id ? updated : m));
+            setSelectedLedgerMapping(updated);
+            message.success('Mapping updated');
+        } catch (e) {
+            message.error('Failed to update mapping');
+        }
+    };
+
     return (
         <div className="h-full flex flex-col bg-white">
             <Content className="p-10 overflow-y-auto custom-scrollbar">
                 <div className="max-w-5xl mx-auto space-y-8">
                     {onBack && (
-                        <Button type="text" icon={<ArrowLeftOutlined />} className="text-slate-500 hover:text-emerald-600 -ml-1 pl-0 mb-2" onClick={onBack}>
+                        <Button type="text" icon={<ArrowLeftOutlined />} className="text-[#64748B] hover:text-[#10B981] -ml-1 pl-0 mb-2" onClick={onBack}>
                             Back to Dashboard
                         </Button>
                     )}
-                    {/* Active Composer */}
-                    <div className="bg-white border border-slate-100 rounded-2xl p-8 shadow-sm">
+                    {project?.name && (
+                        <div className="flex items-baseline gap-2 truncate max-w-xl mb-1 workspace-project-name" title={project.name}>
+                            <span className="text-[10px] font-extrabold text-[#64748B] uppercase tracking-wider shrink-0">Project</span>
+                            <span className="workspace-project-name-value text-sm font-bold text-[#0F172A] truncate min-w-0">{project.name}</span>
+                        </div>
+                    )}
+                    {/* Active Composer — reused for both new mapping and edit */}
+                    <div
+                        ref={composerRef}
+                        className={`bg-white border rounded-2xl p-8 bg-slate-50/20 transition-shadow duration-300 ${selectedLedgerMapping || composerFlashGreen ? 'composer-edit-flash border-[#10B981]' : 'border-[rgba(0,0,0,0.06)]'}`}
+                    >
                         <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-10 mb-10">
-                            <div className={`p-5 rounded-xl border transition-all ${selectedSource ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-50 bg-slate-50/30'}`}>
-                                <Text className="text-[9px] font-black text-slate-400 tracking-widest uppercase block mb-3">Input Element</Text>
-                                <div className="font-black text-slate-900 text-lg">{selectedSource ? selectedSource.title : "—"}</div>
+                            <div className={`p-5 rounded-xl border transition-all ${(selectedLedgerMapping || selectedSource) ? 'border-[1.5px] border-[rgba(16,185,129,0.35)] bg-emerald-50/20' : 'border-[rgba(0,0,0,0.06)] bg-slate-50/40'}`}>
+                                <Text className="text-[9px] font-extrabold text-[#475569] tracking-[0.2em] uppercase block mb-3">Input Element</Text>
+                                {selectedLedgerMapping ? (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="font-semibold text-[#0F172A] text-lg truncate flex-1 min-w-0">{selectedLedgerMapping.source}</div>
+                                        <Button size="small" type="default" onClick={() => { setAwaitingSourcePickForEdit(true); message.info('Click a field in the left tree'); }} className="shrink-0 text-[10px]">Change</Button>
+                                    </div>
+                                ) : (
+                                    <div className="font-semibold text-[#0F172A] text-lg">{selectedSource ? selectedSource.title : "—"}</div>
+                                )}
+                                {selectedLedgerMapping && awaitingSourcePickForEdit && <span className="text-[10px] text-amber-600 mt-1 block">← Click in left tree</span>}
                             </div>
                             <div className="flex flex-col items-center">
-                                <div className={`w-12 h-12 rounded-full border flex items-center justify-center mb-2 transition-all ${selectedSource && selectedTarget ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-100 text-slate-200'}`}>
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 transition-all ${(selectedLedgerMapping || (selectedSource && selectedTarget)) ? 'bg-[#10B981] text-white' : 'bg-slate-100 text-[#94A3B8] border border-[rgba(0,0,0,0.04)]'}`}>
                                     <ArrowRightOutlined />
                                 </div>
                             </div>
-                            <div className={`p-5 rounded-xl border transition-all ${selectedTarget ? 'border-emerald-500 bg-emerald-50/30' : 'border-slate-50 bg-slate-50/30'}`}>
-                                <Text className="text-[9px] font-black text-slate-400 tracking-widest uppercase block mb-3">Canonical Target</Text>
-                                <div className="font-black text-slate-900 text-lg">{selectedTarget ? selectedTarget.title : "—"}</div>
+                            <div className={`p-5 rounded-xl border transition-all ${(selectedLedgerMapping || selectedTarget) ? 'border-[1.5px] border-[rgba(16,185,129,0.35)] bg-emerald-50/20' : 'border-[rgba(0,0,0,0.06)] bg-slate-50/40'}`}>
+                                <Text className="text-[9px] font-extrabold text-[#475569] tracking-[0.2em] uppercase block mb-3">Canonical Target</Text>
+                                {selectedLedgerMapping ? (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="font-semibold text-[#0F172A] text-lg truncate flex-1 min-w-0">{selectedLedgerMapping.target}</div>
+                                        <Button size="small" type="default" onClick={() => { setAwaitingTargetPickForEdit(true); message.info('Click a field in the right tree'); }} className="shrink-0 text-[10px]">Change</Button>
+                                    </div>
+                                ) : (
+                                    <div className="font-semibold text-[#0F172A] text-lg">{selectedTarget ? selectedTarget.title : "—"}</div>
+                                )}
+                                {selectedLedgerMapping && awaitingTargetPickForEdit && <span className="text-[10px] text-amber-600 mt-1 block">Click in right tree →</span>}
                             </div>
                         </div>
 
-                        {selectedSource && selectedTarget && (
+                        {selectedLedgerMapping ? (
                             <div className="animate-in fade-in slide-in-from-top-2">
                                 <div className="flex justify-between items-center mb-3">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logic Script</label>
-                                    <Tag className="m-0 text-[10px] border-none bg-slate-50 font-bold">NODE.JS</Tag>
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
+                                    <Tag className="m-0 text-[10px] border-none bg-slate-100 text-[#64748B] font-semibold">NODE.JS</Tag>
+                                </div>
+                                <Input.TextArea
+                                    rows={4}
+                                    value={editLogic}
+                                    onChange={e => setEditLogic(e.target.value)}
+                                    className="font-mono text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 mb-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
+                                    placeholder="e.g. target.key = source.key;"
+                                />
+                                <div className="mb-6">
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.12em] block mb-2">Comment (optional)</label>
+                                    <Input
+                                        value={editComment}
+                                        onChange={e => setEditComment(e.target.value)}
+                                        className="rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
+                                        placeholder="Optional"
+                                        allowClear
+                                    />
+                                </div>
+                                <div className="flex justify-end items-center gap-2 bg-slate-50/50 p-4 rounded-xl border border-[rgba(0,0,0,0.04)]">
+                                    <Button type="default" onClick={() => { setSelectedLedgerMapping(null); setAwaitingSourcePickForEdit(false); setAwaitingTargetPickForEdit(false); }} className="text-[#64748B]">
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        type="primary"
+                                        size="large"
+                                        icon={<CheckCircleFilled />}
+                                        onClick={handleSaveEdit}
+                                        className="px-8 font-bold bg-emerald-500 hover:bg-emerald-600"
+                                    >
+                                        Save
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : selectedSource && selectedTarget ? (
+                            <div className="animate-in fade-in slide-in-from-top-2">
+                                <div className="flex justify-between items-center mb-3">
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
+                                    <Tag className="m-0 text-[10px] border-none bg-slate-100 text-[#64748B] font-semibold">NODE.JS</Tag>
                                 </div>
                                 <Input.TextArea
                                     rows={4}
                                     value={logic}
                                     onChange={e => setLogic(e.target.value)}
-                                    className="font-mono text-xs rounded-xl border-slate-100 bg-slate-50/50 p-4 mb-6 focus:bg-white transition-all"
+                                    className="font-mono text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 mb-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
                                     placeholder={`e.g. target.${selectedTarget.key} = source.${selectedSource.key};`}
                                 />
-                                <div className="flex justify-between items-center bg-slate-50/30 p-4 rounded-xl">
-                                    <div className="flex gap-2 items-center">
+                                <div className="mb-6">
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.12em] block mb-2">Comment (optional)</label>
+                                    <Input
+                                        value={comment}
+                                        onChange={e => setComment(e.target.value)}
+                                        className="rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
+                                        placeholder="e.g. SSN from member; used for eligibility lookup"
+                                        allowClear
+                                    />
+                                </div>
+                                <div className="mb-6 flex items-center gap-2">
+                                    <input
+                                        type="checkbox"
+                                        id="review-later-check"
+                                        checked={reviewLater}
+                                        onChange={e => setReviewLater(e.target.checked)}
+                                        className="rounded border-slate-300 text-emerald-500 focus:ring-emerald-500"
+                                    />
+                                    <label htmlFor="review-later-check" className="text-xs text-[#334155] cursor-pointer">Mark for review later</label>
+                                </div>
+                                <div className="flex justify-between items-center bg-slate-50/50 p-4 rounded-xl border border-[rgba(0,0,0,0.04)]">
+                                    <div className="flex gap-2 items-center flex-wrap">
                                         {isAiThinking ? (
                                             <div className="flex items-center gap-2 px-3 text-slate-400 text-xs">
-                                                <Spin size="small" /> AI Analysis...
+                                                <Spin size="small" /> AI / LLM generating logic…
                                             </div>
-                                        ) : aiSuggestions.map((s, i) => (
-                                            <Button key={i} size="small" className="rounded-full text-[10px] font-bold border-slate-200 hover:border-emerald-500" onClick={() => setLogic(s.code)}>
-                                                <RobotOutlined className="text-emerald-500" /> {s.label}
-                                            </Button>
-                                        ))}
+                                        ) : (
+                                            <>
+                                                {aiSuggestions.map((s, i) => (
+                                                    <Button key={i} size="small" className="rounded-full text-[10px] font-semibold border-[rgba(0,0,0,0.06)] text-[#64748B] hover:text-[#10B981] hover:border-[rgba(16,185,129,0.35)]" onClick={() => setLogic(s.code)}>
+                                                        <RobotOutlined className="text-[#10B981]" /> {s.label}
+                                                    </Button>
+                                                ))}
+                                                <Tooltip title="Regenerate AI / LLM suggestions">
+                                                    <Button size="small" type="default" icon={<RobotOutlined />} onClick={() => getAiSuggestions(selectedSource, selectedTarget)} className="text-[10px] text-[#64748B] hover:text-[#10B981]">
+                                                        Generate with AI
+                                                    </Button>
+                                                </Tooltip>
+                                            </>
+                                        )}
                                     </div>
                                     <Button
                                         type="primary"
                                         size="large"
                                         icon={<CheckCircleFilled />}
                                         onClick={commitMapping}
-                                        className="px-12 font-bold shadow-lg shadow-emerald-200"
+                                        className="px-12 font-bold"
                                     >
                                         Apply Rule
                                     </Button>
                                 </div>
                             </div>
-                        )}
-
-                        {!selectedSource && !selectedTarget && (
-                            <div className="text-center py-4 border border-dashed border-slate-100 rounded-xl bg-slate-50/20">
-                                <Text className="text-slate-400 text-xs">Select nodes from sidebar trees to begin mapping</Text>
+                        ) : (
+                            <div className="text-center py-4 border border-dashed border-[rgba(0,0,0,0.06)] rounded-xl bg-slate-50/30">
+                                <Text className="text-[#64748B] text-xs">Select nodes from sidebar trees to begin mapping</Text>
                             </div>
                         )}
                     </div>
 
                     {/* Ledger */}
-                    <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                        <div className="px-6 py-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mapping Ledger</span>
-                            <Badge count={mappings.length} color="#10B981" />
+                    <div className="bg-white border border-[rgba(0,0,0,0.06)] rounded-2xl overflow-hidden bg-slate-50/20 flex flex-col max-h-[70vh]">
+                        <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.04)] bg-slate-50/50 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                            <span className="text-[11px] font-extrabold text-[#334155] uppercase tracking-[0.14em]">Mapping Ledger</span>
+                            <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0 justify-end">
+                                <Input
+                                    placeholder="Search source, target, comment..."
+                                    value={findQuery}
+                                    onChange={e => setFindQuery(e.target.value)}
+                                    allowClear
+                                    prefix={<SearchOutlined className="text-[#94A3B8]" />}
+                                    className="ledger-search-input w-44 sm:w-52 text-xs transition-all duration-200"
+                                    size="small"
+                                />
+                                <Segmented
+                                    size="small"
+                                    value={reviewFilter}
+                                    onChange={setReviewFilter}
+                                    options={[
+                                        { label: 'All', value: 'all' },
+                                        { label: `Marked for review (${mappings.filter(m => m.reviewLater).length})`, value: 'marked' }
+                                    ]}
+                                />
+                                <Badge count={debouncedFindQuery ? ledgerDisplayMappings.length : filteredMappings.length} color="#10B981" showZero />
+                            </div>
                         </div>
-                        <Table
-                            dataSource={mappings}
-                            columns={columns}
-                            pagination={false}
-                            rowKey="id"
-                            className="studio-table"
-                            locale={{ emptyText: <div className="py-10 text-slate-400 text-xs">No active mapping rules in ledger.</div> }}
-                        />
+                        <div className="flex-1 min-h-0 overflow-auto custom-scrollbar ledger-table-wrap">
+                            <Table
+                                dataSource={ledgerDisplayMappings}
+                                columns={columns}
+                                pagination={false}
+                                rowKey={(r) => r.id ?? r.source + r.target}
+                                className="studio-table ledger-table"
+                                locale={{
+                                    emptyText: debouncedFindQuery
+                                        ? <div className="py-10 text-slate-400 text-xs">No mappings match your search.</div>
+                                        : <div className="py-10 text-slate-400 text-xs">No mappings yet. Select source and target above, then Apply Rule.</div>
+                                }}
+                                onRow={(record) => ({
+                                    onClick: () => setSelectedLedgerMapping(record),
+                                    style: { cursor: 'pointer' },
+                                    className: selectedLedgerMapping && (record.id === selectedLedgerMapping.id || (record.id == null && record === selectedLedgerMapping)) ? 'ledger-row-selected' : ''
+                                })}
+                            />
+                        </div>
                     </div>
                 </div>
             </Content>

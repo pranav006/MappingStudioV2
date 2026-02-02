@@ -1,0 +1,235 @@
+{
+  "transaction": "837",
+  "version": "5010",
+  "name": "EDI 837P v5010",
+  "description": "X12 837 Professional Claim (5010)",
+  "tree": [
+    {
+      "title": "ISA • Interchange Control Header",
+      "key": "ISA",
+      "children": [
+        { "title": "ISA01 • Authorization Information Qualifier", "key": "ISA01", "isLeaf": true },
+        { "title": "ISA02 • Authorization Information", "key": "ISA02", "isLeaf": true },
+        { "title": "ISA03 • Security Information Qualifier", "key": "ISA03", "isLeaf": true },
+        { "title": "ISA04 • Security Information", "key": "ISA04", "isLeaf": true },
+        { "title": "ISA05 • Interchange ID Qualifier (Sender)", "key": "ISA05", "isLeaf": true },
+        { "title": "ISA06 • Interchange Sender ID", "key": "ISA06", "isLeaf": true },
+        { "title": "ISA07 • Interchange ID Qualifier (Receiver)", "key": "ISA07", "isLeaf": true },
+        { "title": "ISA08 • Interchange Receiver ID", "key": "ISA08", "isLeaf": true },
+        { "title": "ISA09 • Interchange Date (YYMMDD)", "key": "ISA09", "isLeaf": true },
+        { "title": "ISA10 • Interchange Time (HHMM)", "key": "ISA10", "isLeaf": true },
+        { "title": "ISA11 • Repetition Separator", "key": "ISA11", "isLeaf": true },
+        { "title": "ISA12 • Interchange Control Version Number (00501)", "key": "ISA12", "isLeaf": true },
+        { "title": "ISA13 • Interchange Control Number", "key": "ISA13", "isLeaf": true },
+        { "title": "ISA14 • Acknowledgment Requested (0/1)", "key": "ISA14", "isLeaf": true },
+        { "title": "ISA15 • Usage Indicator (P/T)", "key": "ISA15", "isLeaf": true },
+        { "title": "ISA16 • Component Element Separator", "key": "ISA16", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "GS • Functional Group Header",
+      "key": "GS",
+      "children": [
+        { "title": "GS01 • Functional Identifier Code (HC=837)", "key": "GS01", "isLeaf": true },
+        { "title": "GS02 • Application Sender Code", "key": "GS02", "isLeaf": true },
+        { "title": "GS03 • Application Receiver Code", "key": "GS03", "isLeaf": true },
+        { "title": "GS04 • Date (CCYYMMDD)", "key": "GS04", "isLeaf": true },
+        { "title": "GS05 • Time (HHMMSS)", "key": "GS05", "isLeaf": true },
+        { "title": "GS06 • Group Control Number", "key": "GS06", "isLeaf": true },
+        { "title": "GS07 • Responsible Agency Code (X)", "key": "GS07", "isLeaf": true },
+        { "title": "GS08 • Version/Release/Industry Identifier (005010X222A1)", "key": "GS08", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "ST • Transaction Set Header",
+      "key": "ST",
+      "children": [
+        { "title": "ST01 • Transaction Set Identifier (837)", "key": "ST01", "isLeaf": true },
+        { "title": "ST02 • Transaction Set Control Number", "key": "ST02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "BHT • Beginning of Hierarchical Transaction",
+      "key": "BHT",
+      "children": [
+        { "title": "BHT01 • Hierarchical Structure Code", "key": "BHT01", "isLeaf": true },
+        { "title": "BHT02 • Transaction Set Purpose Code", "key": "BHT02", "isLeaf": true },
+        { "title": "BHT03 • Reference Identification", "key": "BHT03", "isLeaf": true },
+        { "title": "BHT05 • Transaction Set Creation Date", "key": "BHT05", "isLeaf": true },
+        { "title": "BHT06 • Transaction Set Creation Time", "key": "BHT06", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "Loop 1000A • Submitter",
+      "key": "1000A",
+      "children": [
+        {
+          "title": "NM1 • Submitter Name",
+          "key": "NM1_1000A",
+          "children": [
+            { "title": "NM101 • Entity Identifier (41=Submitter)", "key": "NM101_1000A", "isLeaf": true },
+            { "title": "NM102 • Entity Type (2=Non-Person)", "key": "NM102_1000A", "isLeaf": true },
+            { "title": "NM103 • Submitter Last/Org Name", "key": "NM103_1000A", "isLeaf": true },
+            { "title": "NM108 • ID Code Qualifier (46=EIN)", "key": "NM108_1000A", "isLeaf": true },
+            { "title": "NM109 • Submitter EIN", "key": "NM109_1000A", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "PER • Submitter Contact",
+          "key": "PER_1000A",
+          "children": [
+            { "title": "PER01 • Contact Function Code", "key": "PER01_1000A", "isLeaf": true },
+            { "title": "PER04 • Communication Number (Phone)", "key": "PER04_1000A", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2000A • Billing Provider",
+      "key": "2000A",
+      "children": [
+        {
+          "title": "NM1 • Billing Provider",
+          "key": "NM1_2000A",
+          "children": [
+            { "title": "NM101 • Entity Identifier (85=Billing Provider)", "key": "NM101_2000A", "isLeaf": true },
+            { "title": "NM102 • Entity Type Qualifier", "key": "NM102_2000A", "isLeaf": true },
+            { "title": "NM103 • Provider Last Name", "key": "NM103_2000A", "isLeaf": true },
+            { "title": "NM104 • Provider First Name", "key": "NM104_2000A", "isLeaf": true },
+            { "title": "NM108 • ID Qualifier (XX=NPI)", "key": "NM108_2000A", "isLeaf": true },
+            { "title": "NM109 • Provider NPI", "key": "NM109_P", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "N3 • Provider Address",
+          "key": "N3_2000A",
+          "children": [
+            { "title": "N301 • Address Line 1", "key": "N301_P", "isLeaf": true },
+            { "title": "N302 • Address Line 2", "key": "N302_P", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "N4 • Provider City/State/ZIP",
+          "key": "N4_2000A",
+          "children": [
+            { "title": "N401 • City", "key": "N401_P", "isLeaf": true },
+            { "title": "N402 • State", "key": "N402_P", "isLeaf": true },
+            { "title": "N403 • ZIP", "key": "N403_P", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2000B • Subscriber",
+      "key": "2000B",
+      "children": [
+        {
+          "title": "NM1 • Subscriber Name",
+          "key": "NM1_2000B",
+          "children": [
+            { "title": "NM101 • Entity Identifier (IL=Insured)", "key": "NM101_2000B", "isLeaf": true },
+            { "title": "NM102 • Entity Type (1=Person)", "key": "NM102_2000B", "isLeaf": true },
+            { "title": "NM103 • Subscriber Last Name", "key": "NM103_2000B", "isLeaf": true },
+            { "title": "NM104 • Subscriber First Name", "key": "NM104_2000B", "isLeaf": true },
+            { "title": "NM108 • ID Qualifier (MI=Member ID)", "key": "NM108_2000B", "isLeaf": true },
+            { "title": "NM109 • Subscriber Member ID", "key": "NM109_2000B", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "N3 • Subscriber Address",
+          "key": "N3_2000B",
+          "children": [
+            { "title": "N301 • Address Line 1", "key": "N301_2000B", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DMG • Subscriber Demographics",
+          "key": "DMG_2000B",
+          "children": [
+            { "title": "DMG02 • Date of Birth", "key": "DMG02_2000B", "isLeaf": true },
+            { "title": "DMG03 • Gender", "key": "DMG03_2000B", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2300 • Claim Information",
+      "key": "2300",
+      "children": [
+        {
+          "title": "CLM • Claim Level",
+          "key": "CLM",
+          "children": [
+            { "title": "CLM01 • Claim ID", "key": "CLM01", "isLeaf": true },
+            { "title": "CLM02 • Total Claim Charge Amount", "key": "CLM02", "isLeaf": true },
+            { "title": "CLM05 • Place of Service Code", "key": "CLM05", "isLeaf": true },
+            { "title": "CLM06 • Provider or Supplier Signature", "key": "CLM06", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DTP • Service Date",
+          "key": "DTP_2300",
+          "children": [
+            { "title": "DTP01 • Date Qualifier (472=Service)", "key": "DTP01_2300", "isLeaf": true },
+            { "title": "DTP03 • Service Date", "key": "DTP03_2300", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "REF • Payer Claim ID",
+          "key": "REF_2300",
+          "children": [
+            { "title": "REF01 • Reference Qualifier", "key": "REF01_2300", "isLeaf": true },
+            { "title": "REF02 • Payer Claim Number", "key": "REF02_2300", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2400 • Service Line",
+      "key": "2400",
+      "children": [
+        {
+          "title": "SV1 • Professional Service",
+          "key": "SV1",
+          "children": [
+            { "title": "SV101 • Procedure Identifier (HC/HCPCS)", "key": "SV101", "isLeaf": true },
+            { "title": "SV102 • Line Item Charge Amount", "key": "SV102", "isLeaf": true },
+            { "title": "SV103 • Unit or Basis for Measurement", "key": "SV103", "isLeaf": true },
+            { "title": "SV104 • Service Unit Count", "key": "SV104", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DTP • Service Line Date",
+          "key": "DTP_2400",
+          "children": [
+            { "title": "DTP03 • Service Date", "key": "DTP03_2400", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "SE • Transaction Set Trailer",
+      "key": "SE",
+      "children": [
+        { "title": "SE01 • Segment Count", "key": "SE01", "isLeaf": true },
+        { "title": "SE02 • Control Number", "key": "SE02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "GE • Functional Group Trailer",
+      "key": "GE",
+      "children": [
+        { "title": "GE01 • Number of Transaction Sets Included", "key": "GE01", "isLeaf": true },
+        { "title": "GE02 • Group Control Number", "key": "GE02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "IEA • Interchange Control Trailer",
+      "key": "IEA",
+      "children": [
+        { "title": "IEA01 • Number of Included Functional Groups", "key": "IEA01", "isLeaf": true },
+        { "title": "IEA02 • Interchange Control Number", "key": "IEA02", "isLeaf": true }
+      ]
+    }
+  ]
+}

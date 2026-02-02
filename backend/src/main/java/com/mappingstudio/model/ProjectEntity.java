@@ -20,6 +20,10 @@ public class ProjectEntity {
     private String status;
     private String updated;
 
+    /** Computed when listing projects: % of target schema elements that have at least one mapping. Not persisted. */
+    @Transient
+    private Integer coverage;
+
     public ProjectEntity() {}
 
     public ProjectEntity(String name, String sourceSchema, String targetSchema) {

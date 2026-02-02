@@ -31,6 +31,8 @@ public class MappingEntity {
     @Column(length = 2000)
     private String comments;
 
+    private Boolean reviewLater;
+
     public MappingEntity() {}
 
     public MappingEntity(

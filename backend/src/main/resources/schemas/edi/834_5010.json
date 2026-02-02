@@ -1,0 +1,218 @@
+{
+  "transaction": "834",
+  "version": "5010",
+  "name": "EDI 834 v5010",
+  "description": "X12 834 Benefit Enrollment and Maintenance (5010)",
+  "tree": [
+    {
+      "title": "ISA • Interchange Control Header",
+      "key": "ISA",
+      "children": [
+        { "title": "ISA01 • Authorization Information Qualifier", "key": "ISA01", "isLeaf": true },
+        { "title": "ISA02 • Authorization Information", "key": "ISA02", "isLeaf": true },
+        { "title": "ISA03 • Security Information Qualifier", "key": "ISA03", "isLeaf": true },
+        { "title": "ISA04 • Security Information", "key": "ISA04", "isLeaf": true },
+        { "title": "ISA05 • Interchange ID Qualifier (Sender)", "key": "ISA05", "isLeaf": true },
+        { "title": "ISA06 • Interchange Sender ID", "key": "ISA06", "isLeaf": true },
+        { "title": "ISA07 • Interchange ID Qualifier (Receiver)", "key": "ISA07", "isLeaf": true },
+        { "title": "ISA08 • Interchange Receiver ID", "key": "ISA08", "isLeaf": true },
+        { "title": "ISA09 • Interchange Date (YYMMDD)", "key": "ISA09", "isLeaf": true },
+        { "title": "ISA10 • Interchange Time (HHMM)", "key": "ISA10", "isLeaf": true },
+        { "title": "ISA11 • Repetition Separator", "key": "ISA11", "isLeaf": true },
+        { "title": "ISA12 • Interchange Control Version Number (00501)", "key": "ISA12", "isLeaf": true },
+        { "title": "ISA13 • Interchange Control Number", "key": "ISA13", "isLeaf": true },
+        { "title": "ISA14 • Acknowledgment Requested (0/1)", "key": "ISA14", "isLeaf": true },
+        { "title": "ISA15 • Usage Indicator (P/T)", "key": "ISA15", "isLeaf": true },
+        { "title": "ISA16 • Component Element Separator", "key": "ISA16", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "GS • Functional Group Header",
+      "key": "GS",
+      "children": [
+        { "title": "GS01 • Functional Identifier Code (BE=834)", "key": "GS01", "isLeaf": true },
+        { "title": "GS02 • Application Sender Code", "key": "GS02", "isLeaf": true },
+        { "title": "GS03 • Application Receiver Code", "key": "GS03", "isLeaf": true },
+        { "title": "GS04 • Date (CCYYMMDD)", "key": "GS04", "isLeaf": true },
+        { "title": "GS05 • Time (HHMMSS)", "key": "GS05", "isLeaf": true },
+        { "title": "GS06 • Group Control Number", "key": "GS06", "isLeaf": true },
+        { "title": "GS07 • Responsible Agency Code (X)", "key": "GS07", "isLeaf": true },
+        { "title": "GS08 • Version/Release/Industry Identifier (005010X220A1)", "key": "GS08", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "ST • Transaction Set Header",
+      "key": "ST",
+      "children": [
+        { "title": "ST01 • Transaction Set Identifier (834)", "key": "ST01", "isLeaf": true },
+        { "title": "ST02 • Transaction Set Control Number", "key": "ST02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "BGN • Beginning Segment",
+      "key": "BGN",
+      "children": [
+        { "title": "BGN01 • Transaction Set Purpose Code", "key": "BGN01", "isLeaf": true },
+        { "title": "BGN02 • Reference Identification", "key": "BGN02", "isLeaf": true },
+        { "title": "BGN05 • Transaction Set Creation Date", "key": "BGN05", "isLeaf": true },
+        { "title": "BGN06 • Transaction Set Creation Time", "key": "BGN06", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "REF • Reference Information",
+      "key": "REF",
+      "children": [
+        { "title": "REF01 • Reference Identification Qualifier", "key": "REF01", "isLeaf": true },
+        { "title": "REF02 • Reference Identification", "key": "REF02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "DTP • Date/Time/Period",
+      "key": "DTP",
+      "children": [
+        { "title": "DTP01 • Date/Time Qualifier", "key": "DTP01", "isLeaf": true },
+        { "title": "DTP02 • Date Time Period Format Qualifier", "key": "DTP02", "isLeaf": true },
+        { "title": "DTP03 • Date Time Period", "key": "DTP03", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "Loop 1000A • Sponsor",
+      "key": "1000A",
+      "children": [
+        {
+          "title": "N1 • Party Identification",
+          "key": "N1_1000A",
+          "children": [
+            { "title": "N101 • Entity Identifier Code", "key": "N101_1000A", "isLeaf": true },
+            { "title": "N102 • Sponsor Name", "key": "N102_1000A", "isLeaf": true },
+            { "title": "N104 • ID Code Qualifier", "key": "N104_1000A", "isLeaf": true },
+            { "title": "N109 • Sponsor EIN", "key": "N109_1000A", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 1000B • Payer",
+      "key": "1000B",
+      "children": [
+        {
+          "title": "N1 • Payer Identification",
+          "key": "N1_1000B",
+          "children": [
+            { "title": "N101 • Entity Identifier Code (PR)", "key": "N101_1000B", "isLeaf": true },
+            { "title": "N102 • Payer Name", "key": "N102_1000B", "isLeaf": true },
+            { "title": "N109 • Payer Identifier", "key": "N109_1000B", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2000 • Member Level",
+      "key": "2000",
+      "children": [
+        {
+          "title": "INS • Member Level Detail",
+          "key": "INS",
+          "children": [
+            { "title": "INS01 • Indicator (Y/N)", "key": "INS01", "isLeaf": true },
+            { "title": "INS02 • Individual Relationship Code", "key": "INS02", "isLeaf": true },
+            { "title": "INS03 • Maintenance Type Code", "key": "INS03", "isLeaf": true },
+            { "title": "INS04 • Maintenance Reason Code", "key": "INS04", "isLeaf": true },
+            { "title": "INS05 • Benefit Status Code", "key": "INS05", "isLeaf": true },
+            { "title": "INS06 • Medicare Status Code", "key": "INS06", "isLeaf": true },
+            { "title": "INS07 • Medicaid Status Code", "key": "INS07", "isLeaf": true },
+            { "title": "INS08 • Employment Status Code", "key": "INS08", "isLeaf": true },
+            { "title": "INS09 • Student Status Code", "key": "INS09", "isLeaf": true },
+            { "title": "INS11 • Date Time Period Format Qualifier", "key": "INS11", "isLeaf": true },
+            { "title": "INS12 • Employment Status Date", "key": "INS12", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "REF • Member Reference",
+          "key": "REF_2000",
+          "children": [
+            { "title": "REF01 • Reference Qualifier (0F=SSN)", "key": "REF01_2000", "isLeaf": true },
+            { "title": "REF02 • Member Identifier (SSN)", "key": "REF02_2000", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "NM1 • Member Name",
+          "key": "NM1_2000",
+          "children": [
+            { "title": "NM101 • Entity Identifier (IL=Insured)", "key": "NM101_2000", "isLeaf": true },
+            { "title": "NM102 • Entity Type Qualifier (1=Person)", "key": "NM102_2000", "isLeaf": true },
+            { "title": "NM103 • Member Last Name", "key": "NM103", "isLeaf": true },
+            { "title": "NM104 • Member First Name", "key": "NM104", "isLeaf": true },
+            { "title": "NM105 • Member Middle Name", "key": "NM105", "isLeaf": true },
+            { "title": "NM108 • Identification Code Qualifier (MI=Member ID)", "key": "NM108_2000", "isLeaf": true },
+            { "title": "NM109 • Member ID", "key": "NM109", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DMG • Demographic Information",
+          "key": "DMG",
+          "children": [
+            { "title": "DMG01 • Date Time Period Format (D8)", "key": "DMG01", "isLeaf": true },
+            { "title": "DMG02 • Date of Birth", "key": "DMG02", "isLeaf": true },
+            { "title": "DMG03 • Gender Code", "key": "DMG03", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DTP • Member Dates",
+          "key": "DTP_2000",
+          "children": [
+            { "title": "DTP01 • Date Qualifier (291=Eligibility Begin)", "key": "DTP01_2000", "isLeaf": true },
+            { "title": "DTP03 • Eligibility Begin Date", "key": "DTP03_2000", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Loop 2300 • Health Coverage",
+      "key": "2300",
+      "children": [
+        {
+          "title": "HD • Health Coverage",
+          "key": "HD",
+          "children": [
+            { "title": "HD01 • Maintenance Type Code", "key": "HD01", "isLeaf": true },
+            { "title": "HD03 • Insurance Line Code (HLT=Health)", "key": "HD03", "isLeaf": true },
+            { "title": "HD04 • Plan Coverage Description", "key": "HD04", "isLeaf": true }
+          ]
+        },
+        {
+          "title": "DTP • Coverage Dates",
+          "key": "DTP_2300",
+          "children": [
+            { "title": "DTP01 • Date Qualifier (348=Eligibility)", "key": "DTP01_2300", "isLeaf": true },
+            { "title": "DTP03 • Coverage Begin/End Date", "key": "DTP03_2300", "isLeaf": true }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "SE • Transaction Set Trailer",
+      "key": "SE",
+      "children": [
+        { "title": "SE01 • Number of Included Segments", "key": "SE01", "isLeaf": true },
+        { "title": "SE02 • Transaction Set Control Number", "key": "SE02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "GE • Functional Group Trailer",
+      "key": "GE",
+      "children": [
+        { "title": "GE01 • Number of Transaction Sets Included", "key": "GE01", "isLeaf": true },
+        { "title": "GE02 • Group Control Number", "key": "GE02", "isLeaf": true }
+      ]
+    },
+    {
+      "title": "IEA • Interchange Control Trailer",
+      "key": "IEA",
+      "children": [
+        { "title": "IEA01 • Number of Included Functional Groups", "key": "IEA01", "isLeaf": true },
+        { "title": "IEA02 • Interchange Control Number", "key": "IEA02", "isLeaf": true }
+      ]
+    }
+  ]
+}

@@ -36,15 +36,22 @@ body {
 /* Custom Component Overrides */
 .premium-tree .ant-tree-node-content-wrapper {
     border-radius: 4px;
-    padding: 6px 8px !important;
+    padding: 6px 8px 6px 10px !important;
     margin: 2px 0;
     font-size: 13px;
+    line-height: 1.4;
     transition: all 0.2s;
 }
 
-.premium-tree .ant-tree-node-selected {
-    background-color: #10B981 !important;
-    color: white !important;
+.premium-tree .ant-tree-node-content-wrapper {
+    border-left: 3px solid transparent;
+}
+
+.premium-tree .ant-tree-treenode-selected > .ant-tree-node-content-wrapper,
+.premium-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+    background-color: rgba(16, 185, 129, 0.12) !important;
+    border-left-color: #10B981 !important;
+    color: #0F172A !important;
     font-weight: 600;
 }
 
@@ -53,7 +60,7 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #F1F5F9;
+    background: #E2E8F0;
     border-radius: 10px;
 }
 
@@ -62,17 +69,77 @@ body {
 }
 
 .studio-table .ant-table-thead > tr > th {
-    background: transparent;
+    background: #F8FAFC !important;
     font-size: 10px;
-    font-weight: 800;
-    color: #94A3B8;
+    font-weight: 700;
+    color: #64748B;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    border-bottom: 1px solid #F8FAFC;
-    padding: 20px 24px;
+    letter-spacing: 0.12em;
+    border-bottom: 1px dashed rgba(0, 0, 0, 0.08);
+    padding: 14px 20px;
 }
 
 .studio-table .ant-table-tbody > tr > td {
-    padding: 16px 24px;
-    border-bottom: 1px solid #F8FAFC;
+    padding: 14px 20px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    color: #334155;
+}
+
+.studio-table .ant-table-tbody > tr:hover > td {
+    background: #FAFAFA !important;
+}
+
+.studio-table .ant-table-tbody > tr.ledger-row-selected > td {
+    background: #FEF2F2 !important;
+}
+
+/* Smooth ledger filter: rows transition when search results change */
+.ledger-table-wrap .ant-table-tbody > tr {
+    transition: opacity 0.18s ease-out, background-color 0.18s ease-out;
+}
+
+.ledger-search-input.ant-input-affix-wrapper {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Composer flash when entering edit mode */
+.composer-edit-flash {
+    animation: composerGreenFlash 2.5s ease-out;
+}
+
+@keyframes composerGreenFlash {
+    0% {
+        box-shadow: 0 0 0 3px #10B981, 0 0 24px rgba(16, 185, 129, 0.45);
+    }
+    60% {
+        box-shadow: 0 0 0 3px #10B981, 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+    }
+}
+
+/* Schema search hit: light blue highlight, fades out in 1.5s */
+.schema-search-hit {
+    animation: schemaSearchFade 1.5s ease-out forwards;
+}
+
+@keyframes schemaSearchFade {
+    0% {
+        background-color: rgba(59, 130, 246, 0.35);
+        border-radius: 4px;
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+/* Workspace project name (dark theme) */
+.app-root[data-theme="dark"] .workspace-project-name [class*="uppercase"],
+[data-theme="dark"].app-root .workspace-project-name [class*="uppercase"] {
+    color: #94a3b8 !important;
+}
+.app-root[data-theme="dark"] .workspace-project-name-value,
+[data-theme="dark"].app-root .workspace-project-name-value {
+    color: #f1f5f9 !important;
 }
