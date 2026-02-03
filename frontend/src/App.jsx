@@ -27,7 +27,6 @@ import {
     DatabaseOutlined,
     DeleteOutlined,
     FileTextOutlined,
-    RobotOutlined,
     CheckCircleFilled,
     AppstoreOutlined,
     ThunderboltOutlined,
@@ -181,8 +180,12 @@ function LoginScreen({ apiBase, onSuccess }) {
                 body: JSON.stringify({ accessKey: key.trim() })
             });
             if (res.ok) {
-                sessionStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
                 onSuccess(key.trim());
+                try {
+                    sessionStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
+                } catch {
+                    // Storage disabled (e.g. private browsing); user is still logged in for this tab
+                }
             } else {
                 setError('Invalid access key');
             }
@@ -226,6 +229,7 @@ export default function App() {
     const [accessKey, setAccessKey] = useState(() => {
         try { return sessionStorage.getItem(ACCESS_KEY_STORAGE) || ''; } catch { return ''; }
     });
+    const [schemaList, setSchemaList] = useState([]);
     const [schemaTrees, setSchemaTrees] = useState({});
     const [userRole, setUserRole] = useState(() => {
         try {
@@ -354,7 +358,7 @@ export default function App() {
         return res;
     }, [accessKey]);
 
-    // Load projects from backend on app load and when returning to dashboard (so coverage is up to date)
+    // Load projects and schema list when on dashboard
     useEffect(() => {
         if (!accessKey || view !== 'dashboard') return;
         let cancelled = false;
@@ -368,6 +372,20 @@ export default function App() {
             .catch(() => { if (!cancelled) setProjects([]); });
         return () => { cancelled = true; };
     }, [accessKey, fetchWithAuth, view]);
+
+    // Load schema list when authenticated (for project create and tree resolution)
+    useEffect(() => {
+        if (!accessKey) return;
+        let cancelled = false;
+        fetchWithAuth(`${API}/schemas`)
+            .then(res => res.ok ? res.json() : [])
+            .then(data => {
+                if (cancelled) return;
+                setSchemaList(Array.isArray(data) ? data : []);
+            })
+            .catch(() => { if (!cancelled) setSchemaList([]); });
+        return () => { cancelled = true; };
+    }, [accessKey, fetchWithAuth]);
 
     const handleCreateProject = async (newProject) => {
         try {
@@ -437,16 +455,20 @@ export default function App() {
         }
     };
 
-    // Load schema trees (EDI from API, others from SCHEMAS) for both source and target
+    // Load schema trees: resolve name to id (schemaList or EDI key), fetch GET /api/schemas/{id}
     useEffect(() => {
         const sourceSchema = currentProject?.sourceSchema;
         const targetSchema = currentProject?.targetSchema;
         const names = [sourceSchema, targetSchema].filter(Boolean);
-        const toLoad = names.filter(n => EDI_SCHEMA_API_KEYS[n] && !schemaTrees[n]);
+        const getId = (name) => schemaList.find(s => s.name === name)?.id ?? EDI_SCHEMA_API_KEYS[name];
+        const toLoad = names.filter(n => {
+            const id = getId(n);
+            return id && !schemaTrees[n];
+        });
         if (!accessKey || toLoad.length === 0) return;
         let cancelled = false;
         Promise.all(toLoad.map(name =>
-            fetchWithAuth(`${API}/edi/schema/${EDI_SCHEMA_API_KEYS[name]}`)
+            fetchWithAuth(`${API}/schemas/${encodeURIComponent(getId(name))}`)
                 .then(r => r.ok ? r.json() : null)
                 .then(data => ({ name, tree: data?.tree }))
         )).then(results => {
@@ -458,7 +480,7 @@ export default function App() {
             });
         }).catch(() => {});
         return () => { cancelled = true; };
-    }, [currentProject?.sourceSchema, currentProject?.targetSchema, accessKey, schemaTrees, fetchWithAuth]);
+    }, [currentProject?.sourceSchema, currentProject?.targetSchema, accessKey, schemaTrees, schemaList, fetchWithAuth]);
 
     const getTreeForSchema = useCallback((schemaName) => {
         if (!schemaName) return [];
@@ -821,6 +843,10 @@ export default function App() {
                             <ProjectWizard
                                 onCancel={() => setView('dashboard')}
                                 onFinish={handleCreateProject}
+                                schemaList={schemaList}
+                                setSchemaList={setSchemaList}
+                                setSchemaTrees={setSchemaTrees}
+                                fetchWithAuth={fetchWithAuth}
                             />
                         )}
                         {view === 'workspace' && userRole === 'ba' && (
@@ -1024,34 +1050,41 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete, fetchWithAut
                 className="px-6 py-10 box-border relative"
                 style={{ width: '100%', maxWidth: '64rem', marginLeft: 'auto', marginRight: 'auto' }}
             >
-                {/* Training: top right corner — robot coach logo (see docs/MASCOT_AND_ASSETS.md) */}
+                {/* Training: top right corner — human cartoon scholar; character comes out of circle on hover (see docs/MASCOT_AND_ASSETS.md) */}
                 <button
                     type="button"
                     onClick={() => { setTrainingModalOpen(true); setTrainingResult(null); setTrainingFile(null); }}
                     className="absolute top-6 right-6 flex items-center gap-2 px-3 py-2 rounded-xl border border-[rgba(0,0,0,0.06)] bg-white/80 hover:bg-slate-50 hover:border-[rgba(0,0,0,0.1)] transition-colors shadow-sm group"
                     aria-label="Open AI Training — Import Excel mapping spec"
                 >
-                    <span className="shrink-0 w-11 h-11 flex items-center justify-center rounded-full overflow-hidden border border-slate-200 bg-slate-50" aria-hidden>
-                        <svg width="44" height="44" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
-                            <circle cx="24" cy="24" r="22" fill="#E0F2FE" stroke="#0EA5E9" strokeWidth="2" />
-                            <path d="M14 26h6v2h-6z M28 26h6v2h-6z M24 12v-2 M22 14l-2-2 M26 14l2-2" stroke="#64748B" strokeWidth="1" strokeLinecap="round" fill="none" opacity="0.8" />
-                            <circle cx="24" cy="18" r="7" fill="white" stroke="#334155" strokeWidth="1.2" />
-                            <ellipse cx="21" cy="17" rx="2" ry="2.2" fill="#EA580C" />
-                            <ellipse cx="27" cy="17" rx="2" ry="2.2" fill="#EA580C" />
-                            <circle cx="21.5" cy="17" r="0.5" fill="white" />
-                            <circle cx="27.5" cy="17" r="0.5" fill="white" />
-                            <path d="M19 21.5 Q24 24 29 21.5" stroke="#334155" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                            <rect x="16" y="26" width="16" height="12" rx="2" fill="white" stroke="#334155" strokeWidth="1" />
-                            <rect x="16" y="30" width="16" height="3" fill="#DC2626" />
-                            <line x1="20" y1="31" x2="20" y2="32.5" stroke="white" strokeWidth="0.6" />
-                            <line x1="24" y1="31" x2="24" y2="32.5" stroke="white" strokeWidth="0.6" />
-                            <line x1="28" y1="31" x2="28" y2="32.5" stroke="white" strokeWidth="0.6" />
-                            <rect x="18" y="34" width="5" height="3" rx="0.5" fill="#94A3B8" stroke="#64748B" strokeWidth="0.5" />
-                            <line x1="19" y1="35" x2="22" y2="35" stroke="#64748B" strokeWidth="0.4" />
-                            <rect x="25" y="34" width="5" height="3" rx="0.5" fill="#FEF3C7" stroke="#F59E0B" strokeWidth="0.5" />
+                    <span className="train-logo-wrap shrink-0 w-12 h-12 flex items-center justify-center rounded-full bg-white border-[3px] border-black" aria-hidden>
+                        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 block">
+                            {/* White background, black bold circle */}
+                            <circle cx="24" cy="24" r="21" fill="#FFFFFF" stroke="#000000" strokeWidth="2.5" />
+                            {/* Scholar character (moves up on hover) */}
+                            <g className="train-logo-character">
+                                {/* Scholar / graduation cap (black) — mortarboard + tassel */}
+                                <path d="M12 14 L24 10 L36 14 L24 12 Z" fill="#000000" stroke="#000000" strokeWidth="0.8" />
+                                <rect x="18" y="12" width="12" height="2" rx="0.5" fill="#000000" />
+                                <circle cx="28" cy="13" r="1" fill="#000000" />
+                                <line x1="28" y1="13" x2="30" y2="11" stroke="#000000" strokeWidth="0.8" />
+                                {/* Head (human cartoon face) */}
+                                <circle cx="24" cy="22" r="7" fill="#F5D0B0" stroke="#000000" strokeWidth="1" />
+                                <ellipse cx="21" cy="21" rx="1.8" ry="2" fill="#000000" />
+                                <ellipse cx="27" cy="21" rx="1.8" ry="2" fill="#000000" />
+                                <circle cx="21.5" cy="21" r="0.5" fill="#FFFFFF" />
+                                <circle cx="27.5" cy="21" r="0.5" fill="#FFFFFF" />
+                                <path d="M20 25 Q24 28 28 25" stroke="#000000" strokeWidth="1" strokeLinecap="round" fill="none" />
+                                {/* Black robe / dress */}
+                                <path d="M14 30 L16 28 L24 28 L32 28 L34 30 L34 40 L14 40 Z" fill="#000000" stroke="#000000" strokeWidth="1" />
+                                <line x1="24" y1="28" x2="24" y2="40" stroke="#FFFFFF" strokeWidth="0.6" opacity="0.4" />
+                            </g>
                         </svg>
                     </span>
-                    <span className="text-xs font-medium text-[#64748B] group-hover:text-[#334155] hidden sm:inline">Train AI</span>
+                    <span className="relative inline-block min-w-[4rem] sm:min-w-0">
+                        <span className="text-xs font-medium text-[#64748B] group-hover:text-[#334155] hidden sm:inline block group-hover:opacity-0 transition-opacity duration-200">Train AI</span>
+                        <span className="text-xs font-bold text-emerald-600 hidden sm:inline absolute left-0 top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap">lets train</span>
+                    </span>
                     <FileExcelOutlined className="text-[#94A3B8] group-hover:text-emerald-500 text-sm shrink-0" />
                 </button>
 
@@ -1253,10 +1286,67 @@ function DevProjectView({ project, mappings, onBack }) {
     );
 }
 
-function ProjectWizard({ onCancel, onFinish }) {
+const SCHEMA_UPLOAD_TYPES = [
+    { value: 'json_sample', label: 'JSON sample' },
+    { value: 'xsd', label: 'XML / XSD' },
+    { value: 'csv_sample', label: 'CSV sample' },
+    { value: 'excel_spec', label: 'Excel (field name, datatype, requirement)' },
+];
+
+const EDI_OPTIONS_FIRST = ['EDI 834 v5010', 'EDI 837P'];
+
+function ProjectWizard({ onCancel, onFinish, schemaList, setSchemaList, setSchemaTrees, fetchWithAuth }) {
+    // EDI first, then custom uploaded names, then all format labels (JSON, CSV, XML, etc.) so they're always findable
+    const customNames = (schemaList || []).map(s => s.name).filter(Boolean);
+    const options = [...new Set([...EDI_OPTIONS_FIRST, ...customNames, ...SCHEMA_FORMATS])];
     const [name, setName] = useState('');
-    const [source, setSource] = useState('EDI 834 v5010');
-    const [target, setTarget] = useState('JSON Schema');
+    const [source, setSource] = useState(options[0] || 'EDI 834 v5010');
+    const [target, setTarget] = useState(options[options.length > 2 ? 2 : 1] || 'EDI 837P');
+    useEffect(() => {
+        if (options.length === 0) return;
+        setSource(s => (options.includes(s) ? s : options[0]));
+        setTarget(t => (options.includes(t) ? t : options[Math.min(1, options.length - 1)]));
+    }, [options.join(',')]);
+    const [uploadOpen, setUploadOpen] = useState(false);
+    const [uploadType, setUploadType] = useState('json_sample');
+    const [uploadFile, setUploadFile] = useState(null);
+    const [uploadName, setUploadName] = useState('');
+    const [uploading, setUploading] = useState(false);
+
+    const handleUploadSchema = async () => {
+        if (!uploadFile || !fetchWithAuth || !setSchemaList || !setSchemaTrees) return;
+        setUploading(true);
+        try {
+            const form = new FormData();
+            form.append('file', uploadFile);
+            form.append('type', uploadType);
+            if (uploadName.trim()) form.append('name', uploadName.trim());
+            const res = await fetchWithAuth(`${API}/schemas/upload`, {
+                method: 'POST',
+                body: form,
+            });
+            if (!res.ok) {
+                const raw = await res.text();
+                let errMsg = 'Upload failed';
+                try {
+                    const err = raw ? JSON.parse(raw) : {};
+                    errMsg = err.message || err.error || errMsg;
+                } catch (_) { errMsg = raw || errMsg; }
+                throw new Error(errMsg);
+            }
+            const data = await res.json();
+            setSchemaList(prev => [...(prev || []), { id: data.id, name: data.name, kind: 'custom' }]);
+            if (data.tree && setSchemaTrees) setSchemaTrees(prev => ({ ...prev, [data.name]: data.tree }));
+            message.success(`Schema "${data.name}" added. You can select it as Source or Target.`);
+            setUploadOpen(false);
+            setUploadFile(null);
+            setUploadName('');
+        } catch (e) {
+            message.error(e.message || 'Schema upload failed');
+        } finally {
+            setUploading(false);
+        }
+    };
 
     return (
         <div className="w-full flex-1 flex items-center justify-center min-h-0 p-6">
@@ -1285,7 +1375,7 @@ function ProjectWizard({ onCancel, onFinish }) {
                         <div>
                             <label className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em] mb-3 block">Source Format</label>
                             <Select size="large" className="w-full h-12" value={source} onChange={setSource}>
-                                {SCHEMA_FORMATS.map(k => (
+                                {options.map(k => (
                                     <Select.Option key={k} value={k}>{k}</Select.Option>
                                 ))}
                             </Select>
@@ -1293,11 +1383,18 @@ function ProjectWizard({ onCancel, onFinish }) {
                         <div>
                             <label className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.2em] mb-3 block">Target Format</label>
                             <Select size="large" className="w-full h-12" value={target} onChange={setTarget}>
-                                {SCHEMA_FORMATS.map(k => (
+                                {options.map(k => (
                                     <Select.Option key={k} value={k}>{k}</Select.Option>
                                 ))}
                             </Select>
                         </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2">
+                        <span className="text-[10px] text-[#64748B]">Non-EDI (JSON, XSD, CSV, Excel)?</span>
+                        <Button type="link" size="small" className="p-0 h-auto text-[#10B981] font-semibold" onClick={() => setUploadOpen(true)}>
+                            Upload schema
+                        </Button>
                     </div>
 
                     <div className="flex gap-4 pt-4">
@@ -1314,6 +1411,46 @@ function ProjectWizard({ onCancel, onFinish }) {
                     </div>
                 </div>
             </Card>
+
+            <Modal
+                title="Upload schema"
+                open={uploadOpen}
+                onCancel={() => { setUploadOpen(false); setUploadFile(null); setUploadName(''); }}
+                footer={[
+                    <Button key="cancel" onClick={() => { setUploadOpen(false); setUploadFile(null); setUploadName(''); }}>Cancel</Button>,
+                    <Button key="upload" type="primary" loading={uploading} disabled={!uploadFile} onClick={handleUploadSchema}>
+                        Upload & add to list
+                    </Button>,
+                ]}
+            >
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs font-semibold text-[#475569] block mb-2">Type</label>
+                        <Select
+                            className="w-full"
+                            value={uploadType}
+                            onChange={setUploadType}
+                            options={SCHEMA_UPLOAD_TYPES}
+                            getPopupContainer={node => node?.parentElement ?? document.body}
+                            optionFilterProp="label"
+                            showSearch
+                            placeholder="JSON, XML/XSD, CSV, Excel…"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-[#475569] block mb-2">File</label>
+                        <Input
+                            type="file"
+                            accept={uploadType === 'json_sample' ? '.json' : uploadType === 'xsd' ? '.xsd,.xml' : uploadType === 'csv_sample' ? '.csv,.txt' : '.xlsx,.xls'}
+                            onChange={e => setUploadFile(e.target.files?.[0] || null)}
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-semibold text-[#475569] block mb-2">Display name (optional)</label>
+                        <Input placeholder="e.g. Members JSON" value={uploadName} onChange={e => setUploadName(e.target.value)} />
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 }
@@ -1366,11 +1503,20 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
 
     useEffect(() => {
         if (selectedSource && selectedTarget) {
+            setLogic('');
             getAiSuggestions(selectedSource, selectedTarget);
         } else {
             setAiSuggestions([]);
         }
     }, [selectedSource, selectedTarget, getAiSuggestions]);
+
+    // Auto-fill logic with first suggestion when suggestions load (no LLM required)
+    useEffect(() => {
+        if (aiSuggestions.length > 0 && !logic && selectedSource && selectedTarget) {
+            const first = aiSuggestions[0];
+            if (first?.code) setLogic(first.code);
+        }
+    }, [aiSuggestions, selectedSource, selectedTarget]);
 
     useEffect(() => {
         if (selectedLedgerMapping) {
@@ -1662,7 +1808,6 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                             <div className="animate-in fade-in slide-in-from-top-2">
                                 <div className="flex justify-between items-center mb-3">
                                     <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
-                                    <Tag className="m-0 text-[10px] border-none bg-slate-100 text-[#64748B] font-semibold">NODE.JS</Tag>
                                 </div>
                                 <Input.TextArea
                                     rows={4}
@@ -1700,7 +1845,6 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                             <div className="animate-in fade-in slide-in-from-top-2">
                                 <div className="flex justify-between items-center mb-3">
                                     <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
-                                    <Tag className="m-0 text-[10px] border-none bg-slate-100 text-[#64748B] font-semibold">NODE.JS</Tag>
                                 </div>
                                 <Input.TextArea
                                     rows={4}
@@ -1733,18 +1877,18 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                                     <div className="flex gap-2 items-center flex-wrap">
                                         {isAiThinking ? (
                                             <div className="flex items-center gap-2 px-3 text-slate-400 text-xs">
-                                                <Spin size="small" /> AI / LLM generating logic…
+                                                <Spin size="small" /> Loading suggestions…
                                             </div>
                                         ) : (
                                             <>
                                                 {aiSuggestions.map((s, i) => (
                                                     <Button key={i} size="small" className="rounded-full text-[10px] font-semibold border-[rgba(0,0,0,0.06)] text-[#64748B] hover:text-[#10B981] hover:border-[rgba(16,185,129,0.35)]" onClick={() => setLogic(s.code)}>
-                                                        <RobotOutlined className="text-[#10B981]" /> {s.label}
+                                                        {s.label}
                                                     </Button>
                                                 ))}
-                                                <Tooltip title="Regenerate AI / LLM suggestions">
-                                                    <Button size="small" type="default" icon={<RobotOutlined />} onClick={() => getAiSuggestions(selectedSource, selectedTarget)} className="text-[10px] text-[#64748B] hover:text-[#10B981]">
-                                                        Generate with AI
+                                                <Tooltip title="Get new suggestions">
+                                                    <Button size="small" type="default" onClick={() => getAiSuggestions(selectedSource, selectedTarget)} className="text-[10px] text-[#64748B] hover:text-[#10B981]">
+                                                        Refresh
                                                     </Button>
                                                 </Tooltip>
                                             </>

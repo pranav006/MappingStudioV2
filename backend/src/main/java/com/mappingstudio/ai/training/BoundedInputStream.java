@@ -37,7 +37,7 @@ final class BoundedInputStream extends InputStream {
         long remaining = maxBytes - readSoFar;
         int toRead = len;
         if (toRead > remaining) {
-            toRead = (int) remaining;
+            toRead = remaining > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) remaining;
         }
         int n = in.read(b, off, toRead);
         if (n > 0) readSoFar += n;

@@ -12,6 +12,9 @@ app:
     max-source-length: 500         # max length for Source Field (DB-safe)
     max-target-length: 500         # max length for Target Field (DB-safe)
     max-logic-length: 5000         # max length for Mapping Logic (matches ai_learning.logic)
+  # Uploaded (non-EDI) schema: max file size for JSON/XSD/CSV/Excel schema uploads.
+  schema:
+    max-file-size-bytes: 2097152   # 2 MB
   # Optional: LLM for mapping logic suggestions (OpenAI-compatible API).
   # - Own LLM: set api-url to your endpoint (e.g. Ollama http://localhost:11434/v1/chat/completions); api-key can be blank.
   # - External (OpenAI/Azure): set api-key and optionally api-url. See docs/OWN_LLM.md and docs/COMPLIANCE.md.

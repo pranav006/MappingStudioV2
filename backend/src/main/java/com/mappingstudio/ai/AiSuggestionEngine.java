@@ -43,11 +43,13 @@ public class AiSuggestionEngine {
 
         var history = repo.findBySourceFieldAndTargetField(source, target);
         List<Map<String, Object>> learned = history.stream()
+                .filter(entry -> entry.getLogic() != null)
                 .sorted(Comparator.comparingDouble(AiLearningEntity::getConfidence).reversed())
                 .map(entry -> {
+                    String logic = entry.getLogic();
                     Map<String, Object> map = new LinkedHashMap<>();
-                    map.put("label", "Learned: " + (entry.getLogic().length() > 40 ? entry.getLogic().substring(0, 37) + "…" : entry.getLogic()));
-                    map.put("code", entry.getLogic());
+                    map.put("label", logic.length() > 40 ? logic.substring(0, 37) + "…" : logic);
+                    map.put("code", logic);
                     map.put("confidence", entry.getConfidence());
                     return map;
                 })

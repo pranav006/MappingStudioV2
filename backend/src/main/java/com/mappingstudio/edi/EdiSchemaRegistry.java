@@ -2,6 +2,8 @@ package com.mappingstudio.edi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.mappingstudio.model.CustomSchemaEntity;
+import com.mappingstudio.repository.CustomSchemaRepository;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +22,11 @@ public class EdiSchemaRegistry {
     private static final int JSON_SCHEMA_LEAF_COUNT = 4;
 
     private final ObjectMapper mapper = new ObjectMapper();
+    private final CustomSchemaRepository customSchemaRepository;
+
+    public EdiSchemaRegistry(CustomSchemaRepository customSchemaRepository) {
+        this.customSchemaRepository = customSchemaRepository;
+    }
 
     /** List available EDI schema file names (e.g. 834_5010.json, 837P_5010.json). */
     public List<String> listSchemas() {
@@ -45,7 +52,18 @@ public class EdiSchemaRegistry {
         if (targetSchemaName == null) return 1;
         if ("JSON Schema".equals(targetSchemaName)) return JSON_SCHEMA_LEAF_COUNT;
         String key = UI_TO_KEY.get(targetSchemaName);
-        if (key == null) return 1;
+        if (key == null) {
+            var custom = customSchemaRepository.findByName(targetSchemaName);
+            if (custom.isPresent()) {
+                try {
+                    List<Map<String, Object>> tree = mapper.readValue(custom.get().getTreeJson(), new TypeReference<>() {});
+                    return tree == null ? 1 : countLeavesInTree(tree);
+                } catch (Exception e) {
+                    return 1;
+                }
+            }
+            return 1;
+        }
         try {
             Map<String, Object> schema = loadSchema(key);
             @SuppressWarnings("unchecked")

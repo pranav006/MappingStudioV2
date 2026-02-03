@@ -4,6 +4,24 @@ server:
 # Access key: only users who know this can open the app (set APP_ACCESS_KEY env to override)
 app:
   access-key: ${APP_ACCESS_KEY:mappingstudio}
+  # Isolated training: Excel import limits to prevent abuse/malware. No other code touches uploaded files.
+  training:
+    max-file-size-bytes: 5242880   # 5 MB (prevents zip bombs / oversized uploads)
+    max-rows: 10000               # max data rows to process per sheet
+    max-columns: 32               # max columns to read per row
+    max-source-length: 500         # max length for Source Field (DB-safe)
+    max-target-length: 500         # max length for Target Field (DB-safe)
+    max-logic-length: 5000         # max length for Mapping Logic (matches ai_learning.logic)
+  # Uploaded (non-EDI) schema: max file size for JSON/XSD/CSV/Excel schema uploads.
+  schema:
+    max-file-size-bytes: 2097152   # 2 MB
+  # Optional: LLM for mapping logic suggestions (OpenAI-compatible API).
+  # - Own LLM: set api-url to your endpoint (e.g. Ollama http://localhost:11434/v1/chat/completions); api-key can be blank.
+  # - External (OpenAI/Azure): set api-key and optionally api-url. See docs/OWN_LLM.md and docs/COMPLIANCE.md.
+  llm:
+    api-key: ${OPENAI_API_KEY:}
+    api-url: ${OPENAI_API_URL:https://api.openai.com/v1/chat/completions}
+    model: ${OPENAI_MODEL:gpt-3.5-turbo}
 
 spring:
   datasource:
