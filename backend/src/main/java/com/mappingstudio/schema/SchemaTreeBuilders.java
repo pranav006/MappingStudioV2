@@ -231,14 +231,14 @@ public final class SchemaTreeBuilders {
         return stripXmlPrologBom(raw);
     }
 
-    /** Build tree from XSD (extract xs:element name attributes as leaf nodes). */
+    private static final String XS_NS = "http://www.w3.org/2001/XMLSchema";
+
+    /** Build tree from XSD: hierarchy from xs:element → xs:complexType → xs:sequence|all|choice → xs:element (child nodes inside parents, expandable). */
     public static List<Map<String, Object>> fromXsd(InputStream in) throws Exception {
         byte[] raw = in.readAllBytes();
-        // Normalize to UTF-8 and strip BOM/junk so parser never sees "Content is not allowed in prolog"
         byte[] xml = xmlToUtf8(raw);
         javax.xml.parsers.DocumentBuilderFactory f = javax.xml.parsers.DocumentBuilderFactory.newInstance();
         f.setNamespaceAware(true);
-        // Disable external entities and DTD loading to avoid network calls and parse failures (e.g. 834.xsd)
         try {
             f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false);
         } catch (Exception ignored) {}
@@ -251,50 +251,104 @@ public final class SchemaTreeBuilders {
         } catch (Exception ignored) {}
         f.setXIncludeAware(false);
         javax.xml.parsers.DocumentBuilder builder = f.newDocumentBuilder();
-        // Block resolution of external schemaLocation / DTD so 834.xsd etc. do not trigger network calls
         byte[] emptySchema = "<?xml version=\"1.0\"?><xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\"/>".getBytes(StandardCharsets.UTF_8);
         builder.setEntityResolver((publicId, systemId) -> new org.xml.sax.InputSource(new ByteArrayInputStream(emptySchema)));
-        // Parse with explicit UTF-8 so parser never misdetects (avoids "Content is not allowed in prolog")
         org.xml.sax.InputSource input = new org.xml.sax.InputSource(new ByteArrayInputStream(xml));
         input.setEncoding(StandardCharsets.UTF_8.name());
         org.w3c.dom.Document doc = builder.parse(input);
-        List<String> elementNames = new ArrayList<>();
-        org.w3c.dom.Element docRoot = doc.getDocumentElement();
-        if (docRoot != null) collectElementNames(docRoot, elementNames);
-        Set<String> seen = new LinkedHashSet<>();
+        org.w3c.dom.Element schema = doc.getDocumentElement();
+        if (schema == null || !isXs(schema, "schema")) return fallbackXsdTree();
+        int[] count = { 0 };
         List<Map<String, Object>> tree = new ArrayList<>();
-        for (String name : elementNames) {
-            if (name == null || name.isEmpty() || !seen.add(name)) continue;
-            String key = SAFE_KEY.matcher(name).replaceAll("_");
-            Map<String, Object> node = new LinkedHashMap<>();
-            node.put("title", name);
-            node.put("key", key);
-            node.put("isLeaf", true);
-            tree.add(node);
+        org.w3c.dom.NodeList schemaChildren = schema.getChildNodes();
+        for (int i = 0; i < schemaChildren.getLength() && count[0] < MAX_LEAVES; i++) {
+            org.w3c.dom.Node n = schemaChildren.item(i);
+            if (n.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+            org.w3c.dom.Element el = (org.w3c.dom.Element) n;
+            if (!isXs(el, "element")) continue;
+            String name = el.getAttribute("name");
+            if (name == null || name.isEmpty()) continue;
+            Map<String, Object> node = buildXsdElementNode(el, name, "", count);
+            if (node != null) tree.add(node);
         }
-        if (tree.isEmpty()) {
-            Map<String, Object> root = new LinkedHashMap<>();
-            root.put("title", "schema");
-            root.put("key", "root");
-            root.put("isLeaf", true);
-            tree.add(root);
-        }
+        if (tree.isEmpty()) return fallbackXsdTree();
         return tree;
     }
 
-    private static void collectElementNames(org.w3c.dom.Node node, List<String> out) {
-        if (node == null) return;
-        if (node.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) return;
-        org.w3c.dom.Element el = (org.w3c.dom.Element) node;
-        String local = el.getLocalName();
-        if ("element".equalsIgnoreCase(local)) {
-            String name = el.getAttribute("name");
-            if (name != null && !name.isEmpty()) out.add(name);
+    private static List<Map<String, Object>> fallbackXsdTree() {
+        List<Map<String, Object>> tree = new ArrayList<>();
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("title", "schema");
+        root.put("key", "root");
+        root.put("isLeaf", true);
+        tree.add(root);
+        return tree;
+    }
+
+    private static boolean isXs(org.w3c.dom.Element el, String localName) {
+        return localName.equalsIgnoreCase(el.getLocalName())
+            && (XS_NS.equals(el.getNamespaceURI()) || el.getNamespaceURI() == null);
+    }
+
+    /** Find direct xs:element children under this element (via complexType → sequence | all | choice). */
+    private static List<org.w3c.dom.Element> getNestedXsElements(org.w3c.dom.Element elementNode) {
+        List<org.w3c.dom.Element> out = new ArrayList<>();
+        org.w3c.dom.NodeList list = elementNode.getChildNodes();
+        for (int i = 0; i < list.getLength(); i++) {
+            org.w3c.dom.Node n = list.item(i);
+            if (n.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+            org.w3c.dom.Element el = (org.w3c.dom.Element) n;
+            if (!isXs(el, "complexType")) continue;
+            org.w3c.dom.NodeList ctList = el.getChildNodes();
+            for (int j = 0; j < ctList.getLength(); j++) {
+                org.w3c.dom.Node ctChild = ctList.item(j);
+                if (ctChild.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+                org.w3c.dom.Element ctEl = (org.w3c.dom.Element) ctChild;
+                if (!isXs(ctEl, "sequence") && !isXs(ctEl, "all") && !isXs(ctEl, "choice")) continue;
+                org.w3c.dom.NodeList modelList = ctEl.getChildNodes();
+                for (int k = 0; k < modelList.getLength(); k++) {
+                    org.w3c.dom.Node m = modelList.item(k);
+                    if (m.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE) continue;
+                    org.w3c.dom.Element mEl = (org.w3c.dom.Element) m;
+                    if (isXs(mEl, "element")) out.add(mEl);
+                }
+                break; // at most one sequence/all/choice
+            }
+            break; // at most one complexType
         }
-        org.w3c.dom.NodeList children = node.getChildNodes();
-        for (int i = 0; i < children.getLength() && out.size() < MAX_LEAVES; i++) {
-            collectElementNames(children.item(i), out);
+        return out;
+    }
+
+    private static Map<String, Object> buildXsdElementNode(org.w3c.dom.Element elementEl, String name, String parentPath, int[] count) {
+        if (count[0] >= MAX_LEAVES) return null;
+        String path = parentPath.isEmpty() ? name : parentPath + "." + name;
+        String key = SAFE_KEY.matcher(path).replaceAll("_");
+        List<org.w3c.dom.Element> nested = getNestedXsElements(elementEl);
+        if (nested.isEmpty()) {
+            count[0]++;
+            Map<String, Object> leaf = new LinkedHashMap<>();
+            leaf.put("title", name);
+            leaf.put("key", key);
+            leaf.put("isLeaf", true);
+            return leaf;
         }
+        List<Map<String, Object>> children = new ArrayList<>();
+        for (org.w3c.dom.Element childEl : nested) {
+            String childName = childEl.getAttribute("name");
+            if (childName == null || childName.isEmpty()) {
+                String ref = childEl.getAttribute("ref");
+                if (ref != null && !ref.isEmpty()) childName = ref;
+                else continue;
+            }
+            Map<String, Object> childNode = buildXsdElementNode(childEl, childName, path, count);
+            if (childNode != null) children.add(childNode);
+        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("title", name);
+        node.put("key", key);
+        node.put("children", children);
+        node.put("isLeaf", false);
+        return node;
     }
 
     /** Build tree from Excel spec: columns Field Name (or Field, Name), Datatype, Requirement (or Required). */

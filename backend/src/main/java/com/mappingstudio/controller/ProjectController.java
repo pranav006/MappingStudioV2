@@ -36,7 +36,7 @@ public class ProjectController {
         return projects;
     }
 
-    /** Coverage = min(100, round(100 * distinct mapped targets / total target schema leaf count)). */
+    /** Coverage = min(100, round(100 * distinct mapped targets / total target schema leaf count)). Never 100% for a single mapping (ready for deployment = more than one field mapped). */
     private int computeCoverage(Long projectId, String targetSchema) {
         List<MappingEntity> mappings = mappingRepo.findByProjectId(projectId);
         long distinctTargets = mappings.stream()
@@ -46,7 +46,10 @@ public class ProjectController {
             .count();
         int totalLeaves = ediSchemaRegistry.getTargetSchemaLeafCount(targetSchema);
         if (totalLeaves <= 0) totalLeaves = 1;
-        return (int) Math.min(100, Math.round(100.0 * distinctTargets / totalLeaves));
+        int coverage = (int) Math.min(100, Math.round(100.0 * distinctTargets / totalLeaves));
+        // Don't show 100% for one mapping so "ready for deployment" requires more than one field
+        if (distinctTargets == 1 && coverage == 100) coverage = 99;
+        return coverage;
     }
 
     @PostMapping
