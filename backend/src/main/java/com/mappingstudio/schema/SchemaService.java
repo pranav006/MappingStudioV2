@@ -45,6 +45,7 @@ public class SchemaService {
             m.put("id", "custom-" + e.getId());
             m.put("name", e.getName());
             m.put("kind", "custom");
+            m.put("type", e.getType() != null ? e.getType() : "");
             out.add(m);
         }
         return out;

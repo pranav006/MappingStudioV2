@@ -43,7 +43,9 @@ import {
     ToolOutlined,
     FlagOutlined,
     FlagFilled,
-    EditOutlined
+    EditOutlined,
+    ApartmentOutlined,
+    FileOutlined
 } from '@ant-design/icons';
 
 const { Header, Content } = Layout;
@@ -455,12 +457,25 @@ export default function App() {
         }
     };
 
+    // Format label -> schema type (for resolving "XML / XSD" etc. to uploaded custom schema)
+    const FORMAT_TO_TYPE = { 'XML / XSD': 'xsd', 'JSON Schema': 'json_sample', 'CSV / Delimited': 'csv_sample', 'DFF (Data Field File)': 'csv_sample', 'PFF (Position Fixed File)': 'csv_sample' };
     // Load schema trees: resolve name to id (schemaList or EDI key), fetch GET /api/schemas/{id}
     useEffect(() => {
         const sourceSchema = currentProject?.sourceSchema;
         const targetSchema = currentProject?.targetSchema;
         const names = [sourceSchema, targetSchema].filter(Boolean);
-        const getId = (name) => schemaList.find(s => s.name === name)?.id ?? EDI_SCHEMA_API_KEYS[name];
+        const getId = (name) => {
+            const byName = schemaList?.find(s => s.name === name)?.id;
+            if (byName) return byName;
+            if (EDI_SCHEMA_API_KEYS[name]) return EDI_SCHEMA_API_KEYS[name];
+            // Format label (e.g. "XML / XSD"): use first custom schema of matching type so tree loads
+            const type = FORMAT_TO_TYPE[name];
+            if (type && schemaList?.length) {
+                const custom = schemaList.find(s => s.kind === 'custom' && s.type === type);
+                if (custom) return custom.id;
+            }
+            return undefined;
+        };
         const toLoad = names.filter(n => {
             const id = getId(n);
             return id && !schemaTrees[n];
@@ -576,29 +591,39 @@ export default function App() {
     }, []);
 
     const renderSchemaTreeTitle = useCallback((node, mappedTitles, selectedTitle, highlightedKeys) => {
-        const isParent = !node.isLeaf;
-        const parentCls = 'font-semibold text-[#0F172A] leading-tight';
-        const childCls = 'text-[#334155] font-mono text-xs leading-relaxed';
+        const hasChildren = (node.children?.length ?? 0) > 0;
+        const isParent = hasChildren || node.isLeaf === false;
+        const parentCls = 'font-semibold text-[#0F172A] leading-tight text-sm';
+        const childCls = 'text-[#475569] font-mono text-xs leading-relaxed';
         const baseCls = isParent ? parentCls : childCls;
         const isMapped = mappedTitles && mappedTitles.has(node.title);
         const isSelected = selectedTitle != null && node.title === selectedTitle;
         const isHighlighted = highlightedKeys && highlightedKeys.includes(node.key);
+        const Icon = isParent ? ApartmentOutlined : FileOutlined;
+        const iconCls = isParent ? 'text-slate-500 shrink-0' : 'text-slate-400 shrink-0 text-[10px]';
         const titleSpan = (className, content) => (
-            <span className={className} data-node-title={node.title} data-node-key={node.key}>
+            <span className={className} data-node-title={node.title} data-node-key={node.key} data-node-parent={isParent ? '1' : '0'}>
                 {content}
             </span>
         );
         if (isMapped || isSelected) {
             const selectedStyle = isSelected ? 'ring-2 ring-red-300 ring-offset-1 bg-white border border-red-200 rounded' : '';
             return titleSpan(
-                `flex items-center gap-1.5 w-full min-w-0 rounded px-0.5 -mx-0.5 ${isSelected ? selectedStyle : ''} ${isHighlighted ? 'schema-search-hit' : ''}`,
+                `flex items-center gap-1.5 w-full min-w-0 rounded px-0.5 -mx-0.5 ${isSelected ? selectedStyle : ''} ${isHighlighted ? 'schema-search-hit' : ''} ${isParent ? 'schema-tree-parent' : 'schema-tree-leaf'}`,
                 <>
                     {isMapped && <CheckCircleFilled className="text-emerald-500 text-xs shrink-0 flex-shrink-0" aria-hidden />}
+                    <Icon className={iconCls} aria-hidden />
                     <span className={`${baseCls} ${isMapped && !isSelected ? 'bg-emerald-50 text-emerald-700 rounded px-1.5 py-0.5 border border-emerald-200/80' : ''} ${isSelected ? 'text-[#0F172A] font-semibold' : ''} truncate max-w-full`}>{node.title}</span>
                 </>
             );
         }
-        return titleSpan(`${baseCls} ${isHighlighted ? 'schema-search-hit' : ''}`, node.title);
+        return titleSpan(
+            `flex items-center gap-1.5 w-full min-w-0 ${baseCls} ${isHighlighted ? 'schema-search-hit' : ''} ${isParent ? 'schema-tree-parent' : 'schema-tree-leaf'}`,
+            <>
+                <Icon className={iconCls} aria-hidden />
+                <span className="truncate max-w-full">{node.title}</span>
+            </>
+        );
     }, []);
 
     const renderSourceTreeTitle = useCallback((node) => renderSchemaTreeTitle(node, mappedSourceTitles, selectedLedgerMapping?.source, highlightedSourceKeys), [renderSchemaTreeTitle, mappedSourceTitles, selectedLedgerMapping?.source, highlightedSourceKeys]);

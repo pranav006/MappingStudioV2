@@ -55,6 +55,28 @@ body {
     font-weight: 600;
 }
 
+/* Schema tree: clear parent vs child (leaf) distinction */
+.premium-tree .schema-tree-parent {
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    color: #0F172A !important;
+    background: linear-gradient(90deg, rgba(15, 23, 42, 0.06) 0%, transparent 100%) !important;
+    border-left: 2px solid #94a3b8 !important;
+    padding-left: 6px !important;
+    margin-left: -2px !important;
+}
+.premium-tree .schema-tree-leaf {
+    font-weight: 400 !important;
+    font-size: 11px !important;
+    color: #475569 !important;
+}
+.premium-tree .schema-tree-leaf .anticon-file {
+    opacity: 0.7;
+}
+.premium-tree .schema-tree-parent .anticon-apartment {
+    color: #64748b !important;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
 }

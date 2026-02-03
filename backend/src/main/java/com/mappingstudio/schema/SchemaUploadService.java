@@ -52,8 +52,11 @@ public class SchemaUploadService {
         byte[] bytes = file.getBytes();
         if (bytes == null || bytes.length == 0)
             throw new IllegalArgumentException("File content is empty");
-        List<Map<String, Object>> tree;
+        // If content looks like XML/XSD, use XSD parser (fixes wrong type selected in UI e.g. JSON when file is .xsd)
         String typeNorm = type != null ? type.toLowerCase().trim() : "";
+        if (looksLikeXml(bytes))
+            typeNorm = "xsd";
+        List<Map<String, Object>> tree;
         try {
             switch (typeNorm) {
                 case "json_sample" -> tree = SchemaTreeBuilders.fromJsonSample(new ByteArrayInputStream(bytes));
@@ -75,5 +78,21 @@ public class SchemaUploadService {
         entity.setType(typeNorm.isEmpty() ? "json_sample" : typeNorm);
         entity.setTreeJson(treeJson);
         return repo.save(entity);
+    }
+
+    /** True if content starts with <?xml or < (after optional BOM/whitespace). */
+    private static boolean looksLikeXml(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) return false;
+        int i = 0;
+        if (bytes.length >= 3 && bytes[0] == (byte) 0xEF && bytes[1] == (byte) 0xBB && bytes[2] == (byte) 0xBF)
+            i = 3;
+        while (i < bytes.length && (bytes[i] == ' ' || bytes[i] == '\t' || bytes[i] == '\r' || bytes[i] == '\n'))
+            i++;
+        if (i >= bytes.length) return false;
+        if (bytes[i] != '<') return false;
+        if (i + 5 <= bytes.length
+                && bytes[i + 1] == '?' && bytes[i + 2] == 'x' && bytes[i + 3] == 'm' && bytes[i + 4] == 'l')
+            return true;
+        return true; // any leading < is treated as XML
     }
 }

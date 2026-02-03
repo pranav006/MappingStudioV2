@@ -60,6 +60,7 @@ public final class SchemaTreeBuilders {
             node.put("title", nodeKey + " (object)");
             node.put("key", path.isEmpty() ? nodeKey : path);
             node.put("children", children);
+            node.put("isLeaf", false);
             siblings.add(node);
             return;
         }
@@ -78,6 +79,7 @@ public final class SchemaTreeBuilders {
                 node.put("title", nodeKey + " (array)");
                 node.put("key", path.isEmpty() ? nodeKey : path);
                 node.put("children", children);
+                node.put("isLeaf", false);
                 siblings.add(node);
             } else {
                 addLeaf(siblings, path, nodeKey, path.isEmpty() ? nodeKey : path, value.toString());
