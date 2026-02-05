@@ -23,9 +23,7 @@ public class RuleBasedSuggestionService {
     private static final Set<String> AMOUNT_LIKE = Set.of("amount", "amt", "quantity", "qty", "balance", "price");
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^a-z0-9]+");
 
-    /**
-     * Analyze source and target and return suggested mapping logic (no LLM).
-     */
+    /** BA-style business logic: natural language a BA would write (e.g. "Map ISA06 to FirstName in target"). */
     public List<Map<String, Object>> suggest(String sourceKey, String targetKey,
                                                String sourceTitle, String targetTitle) {
         String srcNorm = normalizeForAnalysis(sourceKey, sourceTitle);
@@ -33,13 +31,12 @@ public class RuleBasedSuggestionService {
         List<String> srcTokens = tokenize(srcNorm);
         List<String> tgtTokens = tokenize(tgtNorm);
 
+        String src = (sourceTitle != null && !sourceTitle.isBlank()) ? sourceTitle : sourceKey;
+        String tgt = (targetTitle != null && !targetTitle.isBlank()) ? targetTitle : targetKey;
+
         List<Map<String, Object>> out = new ArrayList<>();
-
-        String direct = "target." + targetKey + " = source." + sourceKey + ";";
-        String trimUpper = "target." + targetKey + " = source." + sourceKey + "?.trim().toUpperCase();";
-        String nullSafe = "target." + targetKey + " = source." + sourceKey + " ?? '';";
-
-        out.add(entry("Direct Mapping", direct));
+        out.add(entry("Map source to target", "Map " + src + " to " + tgt + " in target."));
+        out.add(entry("Copy as-is", "Copy " + src + " to " + tgt + "; use as-is."));
 
         boolean srcId = matchesHint(srcTokens, ID_LIKE) || matchesHint(srcTokens, CODE_LIKE);
         boolean tgtId = matchesHint(tgtTokens, ID_LIKE) || matchesHint(tgtTokens, CODE_LIKE);
@@ -51,23 +48,23 @@ public class RuleBasedSuggestionService {
         boolean tgtAmount = matchesHint(tgtTokens, AMOUNT_LIKE);
 
         if (srcId && tgtId) {
-            out.add(entry("ID/Code: Trim + Uppercase", trimUpper));
-            out.add(entry("ID/Code: Null-safe", nullSafe));
+            out.add(entry("ID/Code: trim and uppercase", "Map " + src + " to " + tgt + "; trim and uppercase."));
+            out.add(entry("ID/Code: null-safe", "Copy " + src + " to " + tgt + "; use empty string if missing."));
         } else if (srcName && tgtName) {
-            out.add(entry("Name: Trim", "target." + targetKey + " = source." + sourceKey + "?.trim();"));
-            out.add(entry("Name: Trim + Title Case", "target." + targetKey + " = (source." + sourceKey + " || '').trim().toLowerCase().replace(/\\b\\w/g, c => c.toUpperCase());"));
+            out.add(entry("Name: trim", "Map " + src + " to " + tgt + "; trim whitespace."));
+            out.add(entry("Name: title case", "Map " + src + " to " + tgt + "; trim and apply title case."));
         } else if (srcDate && tgtDate) {
-            out.add(entry("Date: As-is", direct));
-            out.add(entry("Date: Null-safe", nullSafe));
+            out.add(entry("Date: as-is", "Copy " + src + " to " + tgt + "; use as-is."));
+            out.add(entry("Date: null-safe", "Copy " + src + " to " + tgt + "; use empty if missing."));
         } else if (srcAmount && tgtAmount) {
-            out.add(entry("Amount: As-is", direct));
-            out.add(entry("Amount: Null-safe Number", "target." + targetKey + " = Number(source." + sourceKey + ") || 0;"));
+            out.add(entry("Amount: as-is", "Copy " + src + " to " + tgt + "; use as-is."));
+            out.add(entry("Amount: as number", "Map " + src + " to " + tgt + "; convert to number; use 0 if missing."));
         } else {
-            out.add(entry("Standard Clean", trimUpper));
-            if (!codeEquals(out, nullSafe)) out.add(entry("Null-safe", nullSafe));
+            out.add(entry("Standard: trim and uppercase", "Map " + src + " to " + tgt + "; trim and uppercase."));
+            out.add(entry("Null-safe", "Copy " + src + " to " + tgt + "; use empty string if missing."));
         }
 
-        return dedupeByCode(out, 5);
+        return dedupeByCode(out, 6);
     }
 
     private static List<Map<String, Object>> dedupeByCode(List<Map<String, Object>> list, int max) {

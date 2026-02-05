@@ -77,6 +77,18 @@ body {
     color: #64748b !important;
 }
 
+/* XML/schema tree: vertical expand and collapse */
+.premium-tree.premium-tree-vertical .ant-tree-list {
+    display: flex;
+    flex-direction: column;
+}
+.premium-tree.premium-tree-vertical .ant-tree-treenode {
+    align-items: center;
+}
+.premium-tree.premium-tree-vertical .ant-tree-indent-unit {
+    width: 16px;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
 }

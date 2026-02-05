@@ -502,6 +502,10 @@ export default function App() {
         return schemaTrees[schemaName] ?? SCHEMAS[schemaName] ?? [];
     }, [schemaTrees]);
 
+    const [expandedSourceKeys, setExpandedSourceKeys] = useState([]);
+    const [expandedTargetKeys, setExpandedTargetKeys] = useState([]);
+    const getRootKeys = useCallback((tree) => (tree || []).map(n => n.key), []);
+
     const mappedSourceTitles = useMemo(() => new Set((mappings || []).map(m => m.source).filter(Boolean)), [mappings]);
     const mappedTargetTitles = useMemo(() => new Set((mappings || []).map(m => m.target).filter(Boolean)), [mappings]);
 
@@ -574,6 +578,11 @@ export default function App() {
         const clear = setTimeout(() => setHighlightedTargetKeys([]), 1500);
         return () => clearTimeout(clear);
     }, [debouncedTargetSearch, currentProject?.targetSchema, getMatchingKeys]);
+
+    const sourceTreeData = useMemo(() => getTreeForSchema(currentProject?.sourceSchema) || [], [currentProject?.sourceSchema, getTreeForSchema]);
+    const targetTreeData = useMemo(() => getTreeForSchema(currentProject?.targetSchema) || [], [currentProject?.targetSchema, getTreeForSchema]);
+    useEffect(() => { setExpandedSourceKeys(getRootKeys(sourceTreeData)); }, [currentProject?.sourceSchema, getRootKeys, sourceTreeData]);
+    useEffect(() => { setExpandedTargetKeys(getRootKeys(targetTreeData)); }, [currentProject?.targetSchema, getRootKeys, targetTreeData]);
 
     const sourceMatchNodes = useMemo(() => {
         const tree = getTreeForSchema(currentProject?.sourceSchema) || [];
@@ -744,8 +753,10 @@ export default function App() {
                             <div className="p-4 overflow-y-auto flex-1 custom-scrollbar" data-tree="source">
                                 <Tree
                                     showLine={{ showLeafIcon: false }}
-                                    defaultExpandAll
-                                    treeData={getTreeForSchema(currentProject?.sourceSchema) || []}
+                                    blockNode
+                                    expandedKeys={expandedSourceKeys}
+                                    onExpand={(keys) => setExpandedSourceKeys(keys)}
+                                    treeData={sourceTreeData}
                                     selectedKeys={selectedSourceNode ? [selectedSourceNode.key] : []}
                                     onSelect={(_, {node}) => {
                                         if (!node.isLeaf) return;
@@ -756,7 +767,7 @@ export default function App() {
                                         }
                                         setSelectedSourceNode(node);
                                     }}
-                                    className="premium-tree"
+                                    className="premium-tree premium-tree-vertical"
                                     titleRender={renderSourceTreeTitle}
                                 />
                             </div>
@@ -983,8 +994,10 @@ export default function App() {
                                 <div className="p-4 overflow-y-auto flex-1 min-h-0 custom-scrollbar" data-tree="target">
                                     <Tree
                                         showLine={{ showLeafIcon: false }}
-                                        defaultExpandAll
-                                        treeData={getTreeForSchema(currentProject?.targetSchema) || []}
+                                        blockNode
+                                        expandedKeys={expandedTargetKeys}
+                                        onExpand={(keys) => setExpandedTargetKeys(keys)}
+                                        treeData={targetTreeData}
                                         selectedKeys={selectedTargetNode ? [selectedTargetNode.key] : []}
                                         onSelect={(_, {node}) => {
                                             if (!node.isLeaf) return;
@@ -995,7 +1008,7 @@ export default function App() {
                                             }
                                             setSelectedTargetNode(node);
                                         }}
-                                        className="premium-tree"
+                                        className="premium-tree premium-tree-vertical"
                                         titleRender={renderTargetTreeTitle}
                                     />
                                 </div>
@@ -1183,7 +1196,7 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete, fetchWithAut
                 >
                     <div className="space-y-4">
                         <Text type="secondary" className="text-sm block">
-                            Upload an Excel (.xlsx) file with columns: <strong>Source Field</strong>, <strong>Mapping Logic</strong>, <strong>Target Field</strong>.
+                            Upload an Excel (.xlsx) file with columns: <strong>Source Field</strong>, <strong>Business Logic</strong>, <strong>Target Field</strong>.
                             Each row is recorded so future AI suggestions use your spec — no LLM required.
                         </Text>
                         <div className="flex flex-wrap gap-2 text-xs text-[#64748B] pb-2">
@@ -1258,7 +1271,7 @@ function DevProjectView({ project, mappings, onBack }) {
     const filteredMappings = reviewFilter === 'marked' ? (mappings || []).filter(m => m.reviewLater) : (mappings || []);
     const columns = [
         { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-[#334155]">{t ?? '—'}</span> },
-        { title: 'Mapping Logic', dataIndex: 'logic', key: 'logic', render: t => <code className="text-xs text-[#64748B] block max-w-md truncate">{t ?? '—'}</code> },
+        { title: 'Business Logic', dataIndex: 'logic', key: 'logic', render: t => <span className="text-xs text-[#64748B] block max-w-md truncate">{t ?? '—'}</span> },
         { title: 'Target Field', dataIndex: 'target', key: 'target', render: t => <span className="font-mono text-xs text-emerald-600">{t ?? '—'}</span> },
         { title: 'Comments', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-[#64748B]">{t ?? '—'}</span> },
         {
@@ -1492,7 +1505,23 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
     const [findQuery, setFindQuery] = useState('');
     const [debouncedFindQuery, setDebouncedFindQuery] = useState('');
     const [composerFlashGreen, setComposerFlashGreen] = useState(false);
+    const [logicSuggestionsOpen, setLogicSuggestionsOpen] = useState(false);
     const composerRef = useRef(null);
+    const logicInputRef = useRef(null);
+
+    // Suggestions most applicable to selected nodes: filter by current logic text as user types
+    const filteredLogicSuggestions = useMemo(() => {
+        if (!aiSuggestions.length) return [];
+        const q = (logic || '').trim().toLowerCase();
+        if (!q) return aiSuggestions.slice(0, 6);
+        return aiSuggestions
+            .filter(s => {
+                const code = (s.code || '').toLowerCase();
+                const label = (s.label || '').toLowerCase();
+                return code.includes(q) || label.includes(q);
+            })
+            .slice(0, 8);
+    }, [aiSuggestions, logic]);
 
     if (!project) {
         return (
@@ -1503,10 +1532,15 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
         );
     }
 
-    const defaultSuggestions = useCallback((src, tgt) => [
-        { label: 'Direct Mapping', code: `target.${tgt.key} = source.${src.key};` },
-        { label: 'Standard Clean', code: `target.${tgt.key} = source.${src.key}?.trim().toUpperCase();` }
-    ], []);
+    const defaultSuggestions = useCallback((src, tgt) => {
+        const srcName = (src?.title && String(src.title).trim()) ? String(src.title).trim() : (src?.key ?? 'source');
+        const tgtName = (tgt?.title && String(tgt.title).trim()) ? String(tgt.title).trim() : (tgt?.key ?? 'target');
+        return [
+            { label: 'Map source to target', code: `Map ${srcName} to ${tgtName} in target.` },
+            { label: 'Copy as-is', code: `Copy ${srcName} to ${tgtName}; use as-is.` },
+            { label: 'Copy with trim and uppercase', code: `Map ${srcName} to ${tgtName}; trim and uppercase.` }
+        ];
+    }, []);
 
     const getAiSuggestions = useCallback(async (src, tgt) => {
         if (!src || !tgt || !fetchWithAuth) return;
@@ -1516,7 +1550,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             if (src.title) params.set('sourceTitle', src.title);
             if (tgt.title) params.set('targetTitle', tgt.title);
             const res = await fetchWithAuth(`${API}/ai/suggest?${params.toString()}`, { method: "POST" });
-            const data = await res.json();
+            const data = res.ok ? await res.json() : null;
             const list = Array.isArray(data) ? data : [];
             setAiSuggestions(list.length > 0 ? list : defaultSuggestions(src, tgt));
         } catch (e) {
@@ -1529,9 +1563,11 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
     useEffect(() => {
         if (selectedSource && selectedTarget) {
             setLogic('');
+            setLogicSuggestionsOpen(false);
             getAiSuggestions(selectedSource, selectedTarget);
         } else {
             setAiSuggestions([]);
+            setLogicSuggestionsOpen(false);
         }
     }, [selectedSource, selectedTarget, getAiSuggestions]);
 
@@ -1573,7 +1609,9 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             return;
         }
 
-        const finalLogic = logic || `target.${selectedTarget.key} = source.${selectedSource.key};`;
+        const srcName = (selectedSource?.title && String(selectedSource.title).trim()) ? String(selectedSource.title).trim() : (selectedSource?.key ?? 'source');
+        const tgtName = (selectedTarget?.title && String(selectedTarget.title).trim()) ? String(selectedTarget.title).trim() : (selectedTarget?.key ?? 'target');
+        const finalLogic = logic || `Map ${srcName} to ${tgtName} in target.`;
 
         const newMapping = {
             id: Date.now(),
@@ -1832,14 +1870,14 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                         {selectedLedgerMapping ? (
                             <div className="animate-in fade-in slide-in-from-top-2">
                                 <div className="flex justify-between items-center mb-3">
-                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Business Logic</label>
                                 </div>
                                 <Input.TextArea
                                     rows={4}
                                     value={editLogic}
                                     onChange={e => setEditLogic(e.target.value)}
-                                    className="font-mono text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 mb-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
-                                    placeholder="e.g. target.key = source.key;"
+                                    className="text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 mb-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
+                                    placeholder="e.g. Map ISA06 to FirstName in target; copy from source."
                                 />
                                 <div className="mb-6">
                                     <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.12em] block mb-2">Comment (optional)</label>
@@ -1849,6 +1887,10 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                                         className="rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
                                         placeholder="Optional"
                                         allowClear
+                                        spellCheck
+                                        autoComplete="on"
+                                        autoCorrect="on"
+                                        autoCapitalize="sentences"
                                     />
                                 </div>
                                 <div className="flex justify-end items-center gap-2 bg-slate-50/50 p-4 rounded-xl border border-[rgba(0,0,0,0.04)]">
@@ -1869,15 +1911,36 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                         ) : selectedSource && selectedTarget ? (
                             <div className="animate-in fade-in slide-in-from-top-2">
                                 <div className="flex justify-between items-center mb-3">
-                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Logic Script</label>
+                                    <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.15em]">Business Logic</label>
                                 </div>
-                                <Input.TextArea
-                                    rows={4}
-                                    value={logic}
-                                    onChange={e => setLogic(e.target.value)}
-                                    className="font-mono text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 mb-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
-                                    placeholder={`e.g. target.${selectedTarget.key} = source.${selectedSource.key};`}
-                                />
+                                <div className="relative mb-4">
+                                    <Input.TextArea
+                                        ref={logicInputRef}
+                                        rows={4}
+                                        value={logic}
+                                        onChange={e => setLogic(e.target.value)}
+                                        onFocus={() => setLogicSuggestionsOpen(true)}
+                                        onBlur={() => setTimeout(() => setLogicSuggestionsOpen(false), 180)}
+                                        className="text-xs rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 p-4 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
+                                        placeholder="e.g. Map ISA06 to FirstName in target; copy from source interchange. May include logic (trim, uppercase, null-safe)."
+                                    />
+                                    {filteredLogicSuggestions.length > 0 && (logicSuggestionsOpen || logic) && (
+                                        <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-xl border border-[rgba(0,0,0,0.08)] bg-white shadow-lg overflow-hidden">
+                                            <div className="text-[10px] font-semibold text-[#94A3B8] uppercase tracking-wider px-3 py-2 border-b border-[rgba(0,0,0,0.04)]">Suggestions for selected nodes</div>
+                                            {filteredLogicSuggestions.map((s, i) => (
+                                                <button
+                                                    key={i}
+                                                    type="button"
+                                                    className="w-full text-left px-3 py-2 font-mono text-xs text-[#334155] hover:bg-emerald-50 border-b border-[rgba(0,0,0,0.04)] last:border-b-0 transition-colors"
+                                                    onMouseDown={e => { e.preventDefault(); setLogic(s.code ?? ''); setLogicSuggestionsOpen(false); }}
+                                                >
+                                                    <span className="text-[#64748B] block text-[10px] mb-0.5">{s.label}</span>
+                                                    <code className="text-[#10B981] break-all">{s.code}</code>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="mb-6">
                                     <label className="text-[10px] font-extrabold text-[#475569] uppercase tracking-[0.12em] block mb-2">Comment (optional)</label>
                                     <Input
@@ -1886,6 +1949,10 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                                         className="rounded-xl border-[rgba(0,0,0,0.06)] bg-slate-50/50 focus:bg-white text-[#334155] placeholder:text-[#94A3B8] transition-colors"
                                         placeholder="e.g. SSN from member; used for eligibility lookup"
                                         allowClear
+                                        spellCheck
+                                        autoComplete="on"
+                                        autoCorrect="on"
+                                        autoCapitalize="sentences"
                                     />
                                 </div>
                                 <div className="mb-6 flex items-center gap-2">

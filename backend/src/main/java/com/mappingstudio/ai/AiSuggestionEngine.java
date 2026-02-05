@@ -4,7 +4,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,23 +62,29 @@ public class AiSuggestionEngine {
         }
 
         if (list.isEmpty()) {
-            list = defaultSuggestions(source, target);
+            list = defaultSuggestions(source, target, sourceTitle, targetTitle);
         }
         return list;
     }
 
-    private static List<Map<String, Object>> defaultSuggestions(String source, String target) {
+    /** BA-style business logic text: natural language a BA would write (e.g. "Map ISA06 to FirstName in target"). */
+    private static List<Map<String, Object>> defaultSuggestions(String sourceKey, String targetKey,
+                                                                  String sourceTitle, String targetTitle) {
+        String src = (sourceTitle != null && !sourceTitle.isBlank()) ? sourceTitle : sourceKey;
+        String tgt = (targetTitle != null && !targetTitle.isBlank()) ? targetTitle : targetKey;
         List<Map<String, Object>> out = new ArrayList<>();
-        String direct = "target." + target + " = source." + source + ";";
-        Map<String, Object> m1 = new HashMap<>();
-        m1.put("label", "Direct Mapping");
-        m1.put("code", direct);
-        out.add(m1);
-        String clean = "target." + target + " = source." + source + "?.trim().toUpperCase();";
-        Map<String, Object> m2 = new HashMap<>();
-        m2.put("label", "Standard Clean");
-        m2.put("code", clean);
-        out.add(m2);
+        out.add(entry("Map source to target", "Map " + src + " to " + tgt + " in target."));
+        out.add(entry("Copy as-is", "Copy " + src + " to " + tgt + "; use as-is."));
+        out.add(entry("Copy with trim and uppercase", "Map " + src + " to " + tgt + "; trim and uppercase."));
+        out.add(entry("Copy null-safe", "Copy " + src + " to " + tgt + "; use empty string if missing."));
         return out;
     }
+
+    private static Map<String, Object> entry(String label, String code) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("label", label);
+        m.put("code", code);
+        return m;
+    }
+
 }

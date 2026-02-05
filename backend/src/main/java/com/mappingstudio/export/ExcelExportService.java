@@ -50,7 +50,7 @@ public class ExcelExportService {
         // Header
         Row header = sheet.createRow(0);
         header.createCell(0).setCellValue("Source Field");
-        header.createCell(1).setCellValue("Mapping Logic");
+        header.createCell(1).setCellValue("Business Logic");
         header.createCell(2).setCellValue("Target Field");
         header.createCell(3).setCellValue("Comments");
         header.createCell(4).setCellValue("Review later");

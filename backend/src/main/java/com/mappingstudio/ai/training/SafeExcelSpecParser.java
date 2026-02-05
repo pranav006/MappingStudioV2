@@ -21,7 +21,8 @@ import java.util.List;
 public class SafeExcelSpecParser {
 
     private static final String COL_SOURCE = "Source Field";
-    private static final String COL_LOGIC = "Mapping Logic";
+    private static final String COL_LOGIC = "Business Logic";
+    private static final String COL_LOGIC_ALT = "Mapping Logic";
     private static final String COL_TARGET = "Target Field";
 
     private final TrainingConfig config;
@@ -64,10 +65,11 @@ public class SafeExcelSpecParser {
 
             int srcIdx = findColumnIndex(header, COL_SOURCE, maxCols);
             int logIdx = findColumnIndex(header, COL_LOGIC, maxCols);
+            if (logIdx < 0) logIdx = findColumnIndex(header, COL_LOGIC_ALT, maxCols);
             int tgtIdx = findColumnIndex(header, COL_TARGET, maxCols);
             if (srcIdx < 0 || logIdx < 0 || tgtIdx < 0) {
                 throw new IllegalArgumentException(
-                    "Excel must have columns: \"" + COL_SOURCE + "\", \"" + COL_LOGIC + "\", \"" + COL_TARGET + "\"");
+                    "Excel must have columns: \"" + COL_SOURCE + "\", \"" + COL_LOGIC + "\" (or \"" + COL_LOGIC_ALT + "\"), \"" + COL_TARGET + "\"");
             }
 
             int lastRow = Math.min(sheet.getLastRowNum(), maxRows);

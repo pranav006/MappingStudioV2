@@ -11,13 +11,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
- * LLM-assisted mapping logic suggestions (OpenAI-compatible API).
+ * LLM-assisted business logic suggestions (OpenAI-compatible API).
+ * Suggests natural-language mapping descriptions a BA would write (e.g. "Map ISA06 to FirstName in target").
  * Optional: set app.llm.api-key to enable; when unset, no external calls are made (HIPAA-friendly default).
  * If used with PHI, configure only a HIPAA-eligible endpoint (e.g. Azure OpenAI with BAA). See docs/COMPLIANCE.md.
  */
@@ -25,8 +25,6 @@ import java.util.regex.Pattern;
 public class LlmMappingService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmMappingService.class);
-    private static final Pattern CODE_LINE = Pattern.compile("^\\s*target\\.\\S+\\s*=.*;\\s*$");
-
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -66,21 +64,21 @@ public class LlmMappingService {
 
     private String buildPrompt(String sourceKey, String targetKey, String sourceTitle, String targetTitle) {
         String src = sourceTitle != null && !sourceTitle.isBlank()
-                ? sourceKey + " (\"" + sourceTitle + "\")"
+                ? sourceTitle + " (" + sourceKey + ")"
                 : sourceKey;
         String tgt = targetTitle != null && !targetTitle.isBlank()
-                ? targetKey + " (\"" + targetTitle + "\")"
+                ? targetTitle + " (" + targetKey + ")"
                 : targetKey;
         return """
-            You are a data mapping expert. Suggest 2 to 4 one-line JavaScript expressions to map a source field to a target field.
+            You are a business analyst writing mapping descriptions. Suggest 2 to 4 short one-line business logic descriptions for mapping a source field to a target field. Write as a BA would: natural language, no code.
             Source field: %s
             Target field: %s
+            Examples of the style we want: "Map ISA06 to FirstName in target.", "Copy member SSN from source to target; trim and uppercase.", "Use source date as target effective date; as-is."
             Rules:
-            - Use format: target.%s = <expression>; (use the exact key "%s" for target, "%s" for source).
-            - Each line must be valid JavaScript. Examples: target.X = source.Y; or target.X = source.Y?.trim().toUpperCase();
-            - Include: direct copy, trim/uppercase, and optional null-safe or format variants.
-            - Return ONLY the code lines, one per line, no numbering or explanation.
-            """.formatted(src, tgt, targetKey, targetKey, sourceKey);
+            - Each line is one short sentence a BA would write (e.g. "Map X to Y in target.", "Copy X to Y; trim and uppercase.").
+            - Mention the source and target by name. May include logic (trim, uppercase, null-safe, format).
+            - Return ONLY the description lines, one per line, no numbering or explanation.
+            """.formatted(src, tgt);
     }
 
     private String callLlm(String prompt) throws Exception {
@@ -120,10 +118,9 @@ public class LlmMappingService {
         int n = 0;
         for (String line : lines) {
             line = line.replaceAll("^\\d+[.)]\\s*", "").trim();
-            if (line.isEmpty()) continue;
-            if (!CODE_LINE.matcher(line).matches()) continue;
+            if (line.isEmpty() || line.length() > 500) continue;
             n++;
-            Map<String, Object> entry = new HashMap<>();
+            Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("label", "LLM: " + (n == 1 ? "Suggested" : "Variant " + n));
             entry.put("code", line);
             out.add(entry);
