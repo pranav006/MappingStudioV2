@@ -31,6 +31,10 @@ public class MappingEntity {
     @Column(length = 2000)
     private String comments;
 
+    /** Client-provided comments (visible to BA and Dev). */
+    @Column(name = "client_comments", length = 2000)
+    private String clientComments;
+
     private Boolean reviewLater;
 
     public MappingEntity() {}

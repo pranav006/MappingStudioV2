@@ -48,6 +48,9 @@ public class MappingController {
         if (body.containsKey("comments")) {
             entity.setComments(body.get("comments") == null ? null : body.get("comments").toString());
         }
+        if (body.containsKey("clientComments")) {
+            entity.setClientComments(body.get("clientComments") == null ? null : body.get("clientComments").toString());
+        }
         return repo.save(entity);
     }
 

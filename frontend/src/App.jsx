@@ -45,7 +45,9 @@ import {
     FlagFilled,
     EditOutlined,
     ApartmentOutlined,
-    FileOutlined
+    FileOutlined,
+    LogoutOutlined,
+    UserOutlined
 } from '@ant-design/icons';
 
 const { Header, Content } = Layout;
@@ -166,13 +168,25 @@ const EDI_SCHEMA_API_KEYS = {
     'EDI 837P': '837P_5010',
 };
 
+const LOGIN_ROLES = [
+    { value: 'ba', label: 'BA', description: 'Business Analyst — create specs and mapping logic', Icon: FileTextOutlined },
+    { value: 'dev', label: 'Dev', description: 'Developer — view specs and generate EMS', Icon: CodeOutlined },
+    { value: 'client', label: 'Client', description: 'Client — update business logic and add comments', Icon: UserOutlined },
+];
+
 function LoginScreen({ apiBase, onSuccess }) {
+    const [step, setStep] = useState('role'); // 'role' | 'ba' | 'dev' | 'client'
     const [key, setKey] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const handleRoleSelect = (role) => setStep(role);
+    const handleBack = () => { setStep('role'); setKey(''); setError(''); };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!key.trim()) return;
+        const role = step;
         setLoading(true);
         setError('');
         try {
@@ -182,12 +196,11 @@ function LoginScreen({ apiBase, onSuccess }) {
                 body: JSON.stringify({ accessKey: key.trim() })
             });
             if (res.ok) {
-                onSuccess(key.trim());
                 try {
                     sessionStorage.setItem(ACCESS_KEY_STORAGE, key.trim());
-                } catch {
-                    // Storage disabled (e.g. private browsing); user is still logged in for this tab
-                }
+                    localStorage.setItem(ROLE_KEY, role);
+                } catch (_) {}
+                onSuccess(key.trim(), role);
             } else {
                 setError('Invalid access key');
             }
@@ -197,15 +210,57 @@ function LoginScreen({ apiBase, onSuccess }) {
             setLoading(false);
         }
     };
+
+    // Step 1: Choose which type of user is signing in (horizontal, icon per role, description on hover)
+    if (step === 'role') {
+        return (
+            <div className="h-screen w-full flex bg-white items-center justify-center p-6">
+                <div className="w-full max-w-3xl">
+                    <div className="text-center mb-10">
+                        <div className="inline-flex p-3 rounded-xl bg-emerald-500 mb-4">
+                            <ThunderboltOutlined className="text-white text-2xl" />
+                        </div>
+                        <Title level={4} className="!mb-1 text-[#0F172A]">MappingStudio</Title>
+                        <Text className="text-sm text-[#64748B]">Sign in as</Text>
+                    </div>
+                    <div className="flex flex-row justify-center gap-6 flex-wrap">
+                        {LOGIN_ROLES.map(({ value, label, description, Icon }) => (
+                            <Card
+                                key={value}
+                                hoverable
+                                className="group rounded-2xl border border-[rgba(0,0,0,0.06)] bg-white shadow-sm cursor-pointer transition-all hover:border-emerald-200 hover:shadow-md flex-1 min-w-[140px] max-w-[200px]"
+                                bodyStyle={{ padding: '28px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}
+                                onClick={() => handleRoleSelect(value)}
+                            >
+                                <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center mx-auto mb-3 text-emerald-600">
+                                    <Icon className="text-3xl" />
+                                </div>
+                                <div className="font-semibold text-[#0F172A] mb-2">{label}</div>
+                                <div className="text-[11px] text-[#64748B] leading-tight min-h-[2.5rem] opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                    {description}
+                                </div>
+                            </Card>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // Step 2: Role-specific login (access key only)
+    const roleLabel = LOGIN_ROLES.find(r => r.value === step)?.label ?? step;
     return (
         <div className="h-screen w-full flex bg-white items-center justify-center p-6">
-            <Card className="max-w-sm w-full rounded-2xl border border-[rgba(0,0,0,0.06)] p-8 bg-white" style={{ maxWidth: '24rem' }}>
+            <Card className="max-w-sm w-full rounded-2xl border border-[rgba(0,0,0,0.06)] p-8 bg-white shadow-sm relative" style={{ maxWidth: '24rem' }}>
+                <Button type="text" size="small" className="text-[#64748B] hover:text-[#10B981] -ml-1 mb-2 block" onClick={handleBack}>
+                    ← Back
+                </Button>
                 <div className="text-center mb-6">
                     <div className="inline-flex p-3 rounded-xl bg-emerald-500 mb-4">
                         <ThunderboltOutlined className="text-white text-2xl" />
                     </div>
                     <Title level={4} className="!mb-1 text-[#0F172A]">MappingStudio</Title>
-                    <Text className="text-sm text-[#64748B]">Enter access key to continue</Text>
+                    <Text className="text-sm text-[#64748B]">{roleLabel} login</Text>
                 </div>
                 <form onSubmit={handleSubmit}>
                     <Input.Password
@@ -218,8 +273,8 @@ function LoginScreen({ apiBase, onSuccess }) {
                         autoFocus
                     />
                     {error && <div className="text-red-400 text-sm mb-3">{error}</div>}
-                    <Button type="primary" htmlType="submit" block size="large" loading={loading} className="font-semibold">
-                        Access app
+                    <Button type="primary" htmlType="submit" block size="large" loading={loading} className="font-semibold bg-emerald-500 hover:bg-emerald-600">
+                        Sign in
                     </Button>
                 </form>
             </Card>
@@ -236,7 +291,7 @@ export default function App() {
     const [userRole, setUserRole] = useState(() => {
         try {
             const r = localStorage.getItem(ROLE_KEY);
-            return r === 'dev' ? 'dev' : 'ba';
+            return (r === 'dev' || r === 'client') ? r : 'ba';
         } catch { return 'ba'; }
     });
     const [view, setView] = useState('dashboard');
@@ -257,6 +312,9 @@ export default function App() {
     const [highlightedTargetKeys, setHighlightedTargetKeys] = useState([]);
     const [debouncedSourceSearch, setDebouncedSourceSearch] = useState('');
     const [debouncedTargetSearch, setDebouncedTargetSearch] = useState('');
+    const [functionColumnVisible, setFunctionColumnVisible] = useState(false);
+    const [functionSelections, setFunctionSelections] = useState({});
+    const [functionOptions, setFunctionOptions] = useState([]);
     const resizingSource = useRef(false);
     const resizingTarget = useRef(false);
     const mainWrapperRef = useRef(null);
@@ -335,16 +393,182 @@ export default function App() {
     const setRole = (role) => {
         setUserRole(role);
         try { localStorage.setItem(ROLE_KEY, role); } catch (_) {}
-        if (role === 'dev') {
+        if (role === 'dev' || role === 'client') {
             setView('dashboard');
             setCurrentProject(null);
             setMappings([]);
+            setFunctionColumnVisible(false);
+            setFunctionSelections({});
         } else {
             // BA: if we were in dev-project view, go to dashboard so something always renders
             if (view === 'dev-project') {
                 setView('dashboard');
                 setCurrentProject(null);
             }
+        }
+    };
+
+    useEffect(() => {
+        if (view !== 'dev-project') {
+            setFunctionColumnVisible(false);
+            setFunctionSelections({});
+        }
+    }, [view]);
+
+    const rowKeyForMapping = (m, idx) => m?.id ?? `${m?.source ?? 'src'}-${m?.target ?? 'tgt'}-${idx}`;
+    const guessFunctionFromLogic = (logicText = '') => {
+        const text = (logicText || '').toLowerCase();
+        if (text.includes('date')) return 'convert_date';
+        if (text.includes('trim') || text.includes('upper')) return 'trim_upper';
+        if (text.includes('sum') || text.includes('amount')) return 'sum_amounts';
+        if (text.includes('jsonata')) return 'jsonata';
+        if (text.includes('qwasp')) return 'qwasp';
+        return 'copy';
+    };
+
+    const escapeXml = (str = '') => str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+
+    const functionTemplateForCode = (code) => {
+        switch (code) {
+            case 'trim_upper': return 'TrimUpper';
+            case 'convert_date': return 'ConvertDateTime';
+            case 'sum_amounts': return 'Sum';
+            case 'jsonata': return 'JSONata';
+            case 'qwasp': return 'QWASP';
+            case 'custom_js': return 'JScript';
+            default: return 'Copy';
+        }
+    };
+
+    const generateEmsXml = (rows) => {
+        const uniqueSources = [];
+        const uniqueTargets = [];
+        const sourceIdByKey = {};
+        const targetIdByKey = {};
+        rows.forEach((m) => {
+            if (m.source && !sourceIdByKey[m.source]) {
+                const id = 10 + uniqueSources.length;
+                sourceIdByKey[m.source] = id;
+                uniqueSources.push({ key: m.source, id });
+            }
+            if (m.target && !targetIdByKey[m.target]) {
+                const id = 1000 + uniqueTargets.length;
+                targetIdByKey[m.target] = id;
+                uniqueTargets.push({ key: m.target, id });
+            }
+        });
+
+        let cpCounter = 2000;
+        const functionsXml = [];
+        const connectorsXml = [];
+
+        rows.forEach((m, idx) => {
+            const fnId = idx + 1;
+            const key = rowKeyForMapping(m, idx);
+            const fnCode = functionSelections[key] || guessFunctionFromLogic(m.logic);
+            const template = functionTemplateForCode(fnCode);
+            const inputCp = cpCounter++;
+            const outputCp = cpCounter++;
+            const sourceCp = sourceIdByKey[m.source] ?? inputCp - 10000; // fallback unique
+            const targetCp = targetIdByKey[m.target] ?? outputCp + 10000; // fallback unique
+            const label = escapeXml(m.logic || fnCode || 'mapping');
+
+            functionsXml.push(`
+        <Function ID="${fnId}" Name="Auto_${fnId}" Template="${template}">
+            <Properties Category="Settings">
+                <Property Name="Parameters/logic">${label}</Property>
+            </Properties>
+            <ConnectionPoints>
+                <ConnectionPoint ID="${inputCp}" FP="A" Pos="0" Name="value1"/>
+                <ConnectionPoint ID="${outputCp}" FP="X" Pos="0" Name="result1"/>
+            </ConnectionPoints>
+        </Function>`.trim());
+
+            connectorsXml.push(`<Connector OutputCP="${sourceCp}" InputCP="${inputCp}"/>`);
+            connectorsXml.push(`<Connector OutputCP="${outputCp}" InputCP="${targetCp}"/>`);
+        });
+
+        const sourcesXml = uniqueSources.map(s => `                <ConnectionPoint ID="${s.id}" Path="${escapeXml(s.key)}"/>`).join('\n');
+        const targetsXml = uniqueTargets.map(t => `                <ConnectionPoint ID="${t.id}" Path="${escapeXml(t.key)}"/>`).join('\n');
+
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<Map Version="3" ModelVersion="4" ModelRevision="1">
+    <Properties Category="Summary">
+        <Property Name="Author">MappingStudio</Property>
+        <Property Name="Company">Generated</Property>
+        <Property Name="Status">Draft</Property>
+        <Property Name="Project">${escapeXml(currentProject?.name || 'Project')}</Property>
+    </Properties>
+    <Sources>
+        <ExternalStorage ID="1" Type="File.ECS">
+            <Properties>
+                <Property Name="Name">Source</Property>
+                <Property Name="Location">/source-guideline-placeholder.ecs</Property>
+            </Properties>
+            <ConnectionPoints>
+${sourcesXml || '                <!-- No source fields found -->'}
+            </ConnectionPoints>
+        </ExternalStorage>
+    </Sources>
+    <Targets>
+        <ExternalStorage ID="2" Type="File.ECS">
+            <Properties>
+                <Property Name="Name">Target</Property>
+                <Property Name="Location">/target-guideline-placeholder.ecs</Property>
+            </Properties>
+            <ConnectionPoints>
+${targetsXml || '                <!-- No target fields found -->'}
+            </ConnectionPoints>
+            <ReverseConnectionPoints/>
+        </ExternalStorage>
+    </Targets>
+    <Functions>
+${functionsXml.join('\n')}
+    </Functions>
+    <Connectors>
+        ${connectorsXml.join('\n        ')}
+    </Connectors>
+</Map>`;
+    };
+
+    const generateEmsStub = (rows) => {
+        const xml = generateEmsXml(rows);
+        const blob = new Blob([xml], { type: 'application/xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentProject?.name || 'mapping'}-ems.xml`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    const handleGenerateMap = () => {
+        if (!currentProject || !mappings || mappings.length === 0) {
+            message.info('No mappings to generate.');
+            return;
+        }
+        const alreadyVisible = functionColumnVisible;
+        setFunctionColumnVisible(true);
+        setFunctionSelections(prev => {
+            const next = { ...prev };
+            mappings.forEach((m, idx) => {
+                const key = rowKeyForMapping(m, idx);
+                if (!next[key]) {
+                    next[key] = guessFunctionFromLogic(m.logic);
+                }
+            });
+            return next;
+        });
+        if (!alreadyVisible) {
+            message.success('Function column added. Review or change functions, then click Generate EMS again to export.');
+        } else {
+            generateEmsStub(mappings);
+            message.success('EMS stub generated with selected functions.');
         }
     };
 
@@ -359,6 +583,29 @@ export default function App() {
         }
         return res;
     }, [accessKey]);
+
+    // Load function catalog once we have fetchWithAuth
+    useEffect(() => {
+        const loadFunctions = async () => {
+            try {
+                const res = await fetchWithAuth(`${API}/functions`);
+                if (!res.ok) throw new Error('Failed to load functions');
+                const data = await res.json();
+                setFunctionOptions(data.map(f => ({ value: f.id, label: f.label, description: f.description })));
+            } catch (_) {
+                setFunctionOptions([
+                    { value: 'copy', label: 'Copy (default)' },
+                    { value: 'trim_upper', label: 'Copy with trim + uppercase' },
+                    { value: 'convert_date', label: 'Convert date format' },
+                    { value: 'sum_amounts', label: 'Sum / accumulate amounts' },
+                    { value: 'jsonata', label: 'JSONata expression' },
+                    { value: 'qwasp', label: 'QWASP expression' },
+                    { value: 'custom_js', label: 'Custom JavaScript (manual)' },
+                ]);
+            }
+        };
+        loadFunctions();
+    }, [fetchWithAuth]);
 
     // Load projects and schema list when on dashboard
     useEffect(() => {
@@ -658,7 +905,7 @@ export default function App() {
 
     // Load mappings when opening a project (BA workspace or Dev project view)
     useEffect(() => {
-        const needMappings = (view === 'workspace' && userRole === 'ba') || view === 'dev-project';
+        const needMappings = (view === 'workspace' && userRole === 'ba') || view === 'dev-project' || view === 'client-project';
         if (!needMappings || !currentProject?.id || !accessKey) return;
         let cancelled = false;
         fetchWithAuth(`${API}/mappings/project/${currentProject.id}`)
@@ -691,10 +938,21 @@ export default function App() {
         }
     }, [currentProject?.id, currentProject?.name, fetchWithAuth]);
 
+    const handleLogout = useCallback(() => {
+        setAccessKey('');
+        setView('dashboard');
+        setCurrentProject(null);
+        setMappings([]);
+        try {
+            sessionStorage.removeItem(ACCESS_KEY_STORAGE);
+            localStorage.removeItem(ROLE_KEY);
+        } catch (_) {}
+    }, []);
+
     if (!accessKey) {
         return (
             <ConfigProvider theme={{ token: THEME_TOKENS }}>
-                <LoginScreen apiBase={API} onSuccess={setAccessKey} />
+                <LoginScreen apiBase={API} onSuccess={(key, role) => { setAccessKey(key); setUserRole(role || 'ba'); setView('dashboard'); }} />
             </ConfigProvider>
         );
     }
@@ -790,8 +1048,8 @@ export default function App() {
                 >
                     <Header className={STYLES.premiumHeader}>
                         <div className={`flex items-center justify-start ${view === 'dashboard' ? 'flex-1 min-w-0' : 'shrink-0'}`} style={view !== 'dashboard' ? { minWidth: '6.5rem' } : undefined}>
-                            {(view === 'wizard' || view === 'workspace' || view === 'dev-project') && (
-                                <button type="button" className="group flex items-center rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors w-full min-w-0" onClick={() => { setView('dashboard'); if (view !== 'wizard') setCurrentProject(null); }} aria-label="Back">
+                            {(view === 'wizard' || view === 'workspace' || view === 'dev-project' || view === 'client-project') && (
+                                <button type="button" className="group flex items-center rounded-md text-[#64748B] hover:text-[#10B981] hover:bg-slate-50/80 p-2 transition-colors w-full min-w-0" onClick={() => { setView('dashboard'); if (view !== 'wizard') { setCurrentProject(null); setMappings([]); } }} aria-label="Back">
                                     <ArrowLeftOutlined className="text-lg shrink-0" />
                                     <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium text-[#334155]">Back</span>
                                 </button>
@@ -805,10 +1063,9 @@ export default function App() {
                                     </div>
                                     <span className="font-extrabold text-[1.35rem] tracking-tight text-[#0F172A] whitespace-nowrap header-brand">MappingStudio</span>
                                 </div>
-                                <div className="flex items-center rounded-lg border border-[rgba(0,0,0,0.06)] p-0.5 bg-slate-50/80 shrink-0">
-                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'ba' ? 'bg-emerald-500 text-white shadow-sm' : 'text-[#64748B] hover:text-[#334155]'}`} onClick={() => setRole('ba')}>BA</button>
-                                    <button type="button" className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${userRole === 'dev' ? 'bg-emerald-500 text-white shadow-sm' : 'text-[#64748B] hover:text-[#334155]'}`} onClick={() => setRole('dev')}>Dev</button>
-                                </div>
+                                <span className="text-xs font-semibold text-[#64748B] uppercase tracking-wider px-2 py-1 rounded-md bg-slate-100/80 border border-[rgba(0,0,0,0.04)]">
+                                    {userRole === 'ba' ? 'BA' : userRole === 'dev' ? 'Dev' : 'Client'}
+                                </span>
                             </Space>
                         </div>
                         <div className={`flex items-center justify-end flex-nowrap ${view === 'dashboard' ? 'flex-1 min-w-0' : 'shrink-0'}`} style={{ gap: 0 }}>
@@ -842,14 +1099,20 @@ export default function App() {
                                             <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[6rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Download Excel</span>
                                         </button>
                                     </Tooltip>
-                                    <Tooltip title="Generate Map">
-                                        <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={() => message.info('Generate Map – coming soon')} aria-label="Generate Map">
+                                    <Tooltip title="Generate EMS">
+                                        <button type="button" className="group flex items-center overflow-hidden rounded-md bg-emerald-500 text-white hover:bg-emerald-600 p-2 transition-colors font-bold text-sm" onClick={handleGenerateMap} aria-label="Generate EMS">
                                             <ToolOutlined className="text-lg shrink-0 text-white" />
-                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5">Generate Map</span>
+                                            <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[5.5rem] transition-[max-width] duration-300 ease-out ml-1.5">Generate EMS</span>
                                         </button>
                                     </Tooltip>
                                 </>
                             )}
+                            <Tooltip title="Log out">
+                                <button type="button" className="group flex items-center overflow-hidden rounded-md text-[#64748B] hover:text-red-500 hover:bg-slate-50/80 p-2 transition-colors ml-1" onClick={handleLogout} aria-label="Log out">
+                                    <LogoutOutlined className="text-lg shrink-0" />
+                                    <span className="whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[4rem] transition-[max-width] duration-300 ease-out ml-1.5 text-sm font-medium">Log out</span>
+                                </button>
+                            </Tooltip>
                         </div>
                     </Header>
 
@@ -857,7 +1120,18 @@ export default function App() {
                         className="flex-1 min-w-0 min-h-0 overflow-hidden relative flex flex-col"
                         style={{ width: '100%', minWidth: 0 }}
                     >
-                        {view === 'dashboard' && (
+                        {view === 'dashboard' && userRole === 'client' && (
+                            <ClientDashboard
+                                projects={projects}
+                                onSelect={(p) => {
+                                    setCurrentProject(p);
+                                    setMappings([]);
+                                    setView('client-project');
+                                }}
+                                fetchWithAuth={fetchWithAuth}
+                            />
+                        )}
+                        {view === 'dashboard' && (userRole === 'ba' || userRole === 'dev') && (
                             <Dashboard
                                 projects={projects}
                                 userRole={userRole}
@@ -912,7 +1186,26 @@ export default function App() {
                             )
                         )}
                         {view === 'dev-project' && userRole === 'dev' && (
-                            <DevProjectView project={currentProject} mappings={mappings} onBack={() => { setCurrentProject(null); setView('dashboard'); }} />
+                            <DevProjectView
+                                project={currentProject}
+                                mappings={mappings}
+                                functionColumnVisible={functionColumnVisible}
+                                functionSelections={functionSelections}
+                                setFunctionSelections={setFunctionSelections}
+                                functionOptions={functionOptions}
+                                guessFunctionFromLogic={guessFunctionFromLogic}
+                                onGenerateEms={handleGenerateMap}
+                                onBack={() => { setCurrentProject(null); setView('dashboard'); }}
+                            />
+                        )}
+                        {view === 'client-project' && userRole === 'client' && (
+                            <ClientProjectView
+                                project={currentProject}
+                                mappings={mappings}
+                                setMappings={setMappings}
+                                onBack={() => { setCurrentProject(null); setView('dashboard'); }}
+                                fetchWithAuth={fetchWithAuth}
+                            />
                         )}
                         {/* Fallback: BA in dev-project view or any unmatched state -> show dashboard */}
 {view === 'dev-project' && userRole === 'ba' && (
@@ -1018,6 +1311,138 @@ export default function App() {
                 )}
             </div>
         </ConfigProvider>
+    );
+}
+
+const ENROLLMENT_834_NAME = 'Enrollment 834';
+
+function ClientDashboard({ projects, onSelect, fetchWithAuth }) {
+    const enrollment834 = useMemo(() => projects.filter(p => p.name && (p.name.toLowerCase().includes('834') || p.name.toLowerCase().includes('enrollment'))), [projects]);
+    const otherProjects = useMemo(() => projects.filter(p => !enrollment834.includes(p)), [projects, enrollment834]);
+    return (
+        <div className="overflow-y-auto custom-scrollbar" style={{ width: '100%', flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'flex-start' }}>
+            <div className="px-6 py-10 box-border w-full max-w-3xl mx-auto">
+                <Title level={3} className="!mb-1 text-[#0F172A]">Client view</Title>
+                <Text className="text-sm text-[#64748B] block mb-8">Select a project to update business logic and add your comments.</Text>
+                {enrollment834.length > 0 && (
+                    <div className="mb-8">
+                        <Text className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block mb-4">Enrollment 834 (template)</Text>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {enrollment834.map(p => (
+                                <Card key={p.id} hoverable className={STYLES.glassCard} bodyStyle={{ padding: '20px' }} onClick={() => onSelect(p)}>
+                                    <div className="font-semibold text-[#0F172A] mb-1">{p.name}</div>
+                                    <Text className="text-xs text-[#64748B]">{p.sourceSchema} → {p.targetSchema}</Text>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <Text className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider block mb-4">All projects</Text>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {otherProjects.length === 0 && enrollment834.length === 0 ? (
+                        <Card className={STYLES.glassCard} bodyStyle={{ padding: '24px' }}>
+                            <Empty description="No projects yet. Ask your BA to create an Enrollment 834 or other project." />
+                        </Card>
+                    ) : (
+                        otherProjects.map(p => (
+                            <Card key={p.id} hoverable className={STYLES.glassCard} bodyStyle={{ padding: '20px' }} onClick={() => onSelect(p)}>
+                                <div className="font-semibold text-[#0F172A] mb-1">{p.name}</div>
+                                <Text className="text-xs text-[#64748B]">{p.sourceSchema} → {p.targetSchema}</Text>
+                            </Card>
+                        ))
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ClientProjectView({ project, mappings, setMappings, onBack, fetchWithAuth }) {
+    const [savingId, setSavingId] = useState(null);
+    const saveRow = useCallback(async (record, updates) => {
+        if (!record.id) return;
+        setSavingId(record.id);
+        try {
+            const res = await fetchWithAuth(`${API}/mappings/${record.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            if (!res.ok) throw new Error('Save failed');
+            const updated = await res.json();
+            setMappings(mappings.map(m => m.id === record.id ? updated : m));
+            message.success('Saved');
+        } catch (e) {
+            message.error('Failed to save');
+        } finally {
+            setSavingId(null);
+        }
+    }, [fetchWithAuth, mappings, setMappings]);
+    const columns = [
+        { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-[#334155]">{t ?? '—'}</span> },
+        {
+            title: 'Business Logic',
+            dataIndex: 'logic',
+            key: 'logic',
+            render: (val, record) => (
+                <Input.TextArea
+                                    size="small"
+                                    value={val ?? ''}
+                                    onChange={e => setMappings(mappings.map(m => m.id === record.id ? { ...m, logic: e.target.value } : m))}
+                                    onBlur={e => { const v = e.target.value; if (record.id && (v !== (record.logic ?? ''))) saveRow(record, { logic: v }); }}
+                                    placeholder="Business logic"
+                                    autoSize={{ minRows: 1, maxRows: 3 }}
+                                    className="text-xs"
+                                />
+            )
+        },
+        { title: 'Target Field', dataIndex: 'target', key: 'target', render: t => <span className="font-mono text-xs text-emerald-600">{t ?? '—'}</span> },
+        {
+            title: 'Your comments (client)',
+            dataIndex: 'clientComments',
+            key: 'clientComments',
+            render: (val, record) => (
+                <Input.TextArea
+                                    size="small"
+                                    value={val ?? ''}
+                                    onChange={e => setMappings(mappings.map(m => m.id === record.id ? { ...m, clientComments: e.target.value } : m))}
+                                    onBlur={e => { const v = e.target.value; if (record.id && (v !== (record.clientComments ?? ''))) saveRow(record, { clientComments: v }); }}
+                                    placeholder="Add your comments"
+                                    autoSize={{ minRows: 1, maxRows: 2 }}
+                                    className="text-xs"
+                                />
+            )
+        },
+        {
+            title: '',
+            width: 72,
+            render: (_, record) => record.id && savingId === record.id ? <Spin size="small" /> : null
+        }
+    ];
+    return (
+        <Content className="p-10 overflow-y-auto custom-scrollbar">
+            <div className="max-w-5xl mx-auto space-y-6">
+                <Button type="text" onClick={onBack} className="text-[#64748B] hover:text-[#10B981]">← Back to projects</Button>
+                <div className="bg-white border border-[rgba(0,0,0,0.06)] rounded-2xl p-8 bg-slate-50/20">
+                    <Title level={4} className="m-0 mb-2 text-[#0F172A]">{project?.name ?? 'Project'}</Title>
+                    <Text type="secondary" className="text-sm">{project?.sourceSchema} → {project?.targetSchema}</Text>
+                </div>
+                <div className="bg-white border border-[rgba(0,0,0,0.06)] rounded-2xl overflow-hidden bg-slate-50/20">
+                    <div className="px-6 py-4 border-b border-[rgba(0,0,0,0.04)] bg-slate-50/50">
+                        <span className="text-[10px] font-bold text-[#64748B] uppercase tracking-[0.12em]">Update business logic and your comments</span>
+                    </div>
+                    <Table
+                        dataSource={mappings}
+                        columns={columns}
+                        rowKey={r => r.id ?? r.source + '-' + r.target}
+                        pagination={false}
+                        size="small"
+                        locale={{ emptyText: <div className="py-10 text-[#64748B] text-xs">No mapping rows. BA will add mappings for you to review.</div> }}
+                        className="studio-table"
+                    />
+                </div>
+            </div>
+        </Content>
     );
 }
 
@@ -1266,14 +1691,25 @@ function Dashboard({ projects, userRole, onNew, onSelect, onDelete, fetchWithAut
     );
 }
 
-function DevProjectView({ project, mappings, onBack }) {
+function DevProjectView({
+    project,
+    mappings,
+    onBack,
+    functionColumnVisible,
+    functionSelections,
+    setFunctionSelections,
+    functionOptions,
+    guessFunctionFromLogic,
+    onGenerateEms
+}) {
     const [reviewFilter, setReviewFilter] = useState('all');
     const filteredMappings = reviewFilter === 'marked' ? (mappings || []).filter(m => m.reviewLater) : (mappings || []);
     const columns = [
         { title: 'Source Field', dataIndex: 'source', key: 'source', render: t => <span className="font-mono text-xs text-[#334155]">{t ?? '—'}</span> },
         { title: 'Business Logic', dataIndex: 'logic', key: 'logic', render: t => <span className="text-xs text-[#64748B] block max-w-md truncate">{t ?? '—'}</span> },
         { title: 'Target Field', dataIndex: 'target', key: 'target', render: t => <span className="font-mono text-xs text-emerald-600">{t ?? '—'}</span> },
-        { title: 'Comments', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-[#64748B]">{t ?? '—'}</span> },
+        { title: 'Comments (BA)', dataIndex: 'comments', key: 'comments', render: t => <span className="text-xs text-[#64748B]">{t ?? '—'}</span> },
+        { title: 'Client comments', dataIndex: 'clientComments', key: 'clientComments', render: t => <span className="text-xs text-[#475569]">{t ?? '—'}</span> },
         {
             title: 'Review',
             dataIndex: 'reviewLater',
@@ -1283,6 +1719,27 @@ function DevProjectView({ project, mappings, onBack }) {
             render: (_, r) => r.reviewLater ? <FlagFilled className="text-amber-500" /> : <span className="text-[#94A3B8]">—</span>
         },
     ];
+    if (functionColumnVisible) {
+        columns.splice(3, 0, {
+            title: 'Function (auto-selected)',
+            dataIndex: 'functionCode',
+            key: 'functionCode',
+            render: (_, record, index) => {
+                const key = record.id ?? `${record.source}-${record.target}-${index}`;
+                const value = functionSelections[key] ?? guessFunctionFromLogic(record.logic);
+                return (
+                    <Select
+                        size="small"
+                        className="w-full"
+                        value={value}
+                        onChange={(val) => setFunctionSelections(prev => ({ ...prev, [key]: val }))}
+                        options={functionOptions}
+                        optionLabelProp="label"
+                    />
+                );
+            }
+        });
+    }
     return (
         <Content className="p-10 overflow-y-auto custom-scrollbar">
             <div className="max-w-5xl mx-auto space-y-6">
@@ -1311,14 +1768,17 @@ function DevProjectView({ project, mappings, onBack }) {
                     <Table
                         dataSource={filteredMappings}
                         columns={columns}
-                        rowKey="id"
+                        rowKey={(record, idx) => record.id ?? `${record.source}-${record.target}-${idx}`}
                         pagination={false}
                         size="small"
                         locale={{ emptyText: <div className="py-10 text-[#64748B] text-xs">No mapping rules in this spec.</div> }}
                         className="studio-table"
                     />
                 </div>
-                <Text className="text-xs text-[#64748B] block">Use header actions to Download Excel or Generate Map.</Text>
+                <div className="flex items-center gap-3">
+                    <Button type="primary" onClick={onGenerateEms} size="middle">Generate EMS</Button>
+                    <Text className="text-xs text-[#64748B] block">Download Excel or generate EMS with auto-selected functions; adjust selections in the Function column if needed.</Text>
+                </div>
             </div>
         </Content>
     );
@@ -1585,6 +2045,7 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             setEditComment(selectedLedgerMapping.comments ?? '');
         }
     }, [selectedLedgerMapping]);
+    const selectedClientComments = selectedLedgerMapping?.clientComments ?? '';
 
     // Reset composer when switching to a different project (no pre-populated logic/comment)
     useEffect(() => {
@@ -1674,11 +2135,18 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             render: t => <code className="text-[10px] text-[#64748B] block max-w-xs truncate">{t}</code>
         },
         {
-            title: 'Comments',
+            title: 'Comments (BA)',
             dataIndex: 'comments',
-            width: 160,
+            width: 140,
             ellipsis: true,
             render: t => <span className="text-[10px] text-[#64748B] block max-w-[10rem] truncate" title={t}>{t ?? '—'}</span>
+        },
+        {
+            title: 'Client comments',
+            dataIndex: 'clientComments',
+            width: 140,
+            ellipsis: true,
+            render: t => <span className="text-[10px] text-[#475569] block max-w-[10rem] truncate" title={t}>{t ?? '—'}</span>
         },
         {
             title: 'Review',
@@ -1782,8 +2250,9 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
             const src = (m.source || '').toLowerCase();
             const tgt = (m.target || '').toLowerCase();
             const cmt = (m.comments || '').toLowerCase();
+            const clientCmt = (m.clientComments || '').toLowerCase();
             const logic = (m.logic || '').toLowerCase();
-            return src.includes(q) || tgt.includes(q) || cmt.includes(q) || logic.includes(q);
+            return src.includes(q) || tgt.includes(q) || cmt.includes(q) || clientCmt.includes(q) || logic.includes(q);
         });
     }, [filteredMappings, debouncedFindQuery]);
 
@@ -1892,6 +2361,12 @@ function MappingWorkspace({ project, mappings, setMappings, selectedSource, setS
                                         autoCorrect="on"
                                         autoCapitalize="sentences"
                                     />
+                                    {selectedClientComments ? (
+                                        <div className="mt-2 text-[10px] text-[#64748B]">
+                                            <span className="font-semibold text-[#475569]">Client comments: </span>
+                                            <span>{selectedClientComments}</span>
+                                        </div>
+                                    ) : null}
                                 </div>
                                 <div className="flex justify-end items-center gap-2 bg-slate-50/50 p-4 rounded-xl border border-[rgba(0,0,0,0.04)]">
                                     <Button type="default" onClick={() => { setSelectedLedgerMapping(null); setAwaitingSourcePickForEdit(false); setAwaitingTargetPickForEdit(false); }} className="text-[#64748B]">
