@@ -11,6 +11,16 @@
 
 ---
 
+## Access from any device (same network)
+
+The app can be opened from other devices (phone, tablet, another PC) on the same network with no feature change:
+
+- **Backend** listens on `0.0.0.0:8080` and CORS allows any origin by default so any browser can call the API. Auth still uses the **X-Access-Key** header (no compromise).
+- **Frontend** (Vite dev) listens on all interfaces; open `http://<this-machine-IP>:5173` from another device. The app will call the API at `http://<this-machine-IP>:8080/api` automatically.
+- **Production**: set `APP_CORS_ORIGINS` to your frontend origin(s) (e.g. `https://your-app.vercel.app`) to lock down CORS; leave unset or `*` only on trusted networks.
+
+---
+
 ## Deployment options
 
 | Mode | What you deploy | LLM runs where | App server |

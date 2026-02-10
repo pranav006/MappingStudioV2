@@ -53,8 +53,13 @@ import {
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
-// BACKEND API BASE (set VITE_API_BASE in production, e.g. https://your-backend.herokuapp.com/api)
-const API = import.meta.env.VITE_API_BASE || "http://localhost:8080/api";
+// BACKEND API BASE: use env in production; otherwise same host as the app on port 8080 (so any device can reach backend)
+function getApiBase() {
+    if (import.meta.env.VITE_API_BASE) return import.meta.env.VITE_API_BASE;
+    if (typeof window !== 'undefined') return `${window.location.protocol}//${window.location.hostname}:8080/api`;
+    return 'http://localhost:8080/api';
+}
+const API = getApiBase();
 
 // --- ENTERPRISE DESIGN TOKENS ---
 const THEME_TOKENS = {

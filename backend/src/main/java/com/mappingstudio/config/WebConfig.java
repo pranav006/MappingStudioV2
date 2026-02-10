@@ -13,17 +13,22 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] origins = corsAllowedOrigins == null || corsAllowedOrigins.isBlank()
+        boolean allowAny = "*".equals(corsAllowedOrigins) || (corsAllowedOrigins != null && corsAllowedOrigins.trim().equals("*"));
+        String[] origins = (corsAllowedOrigins == null || corsAllowedOrigins.isBlank())
                 ? new String[0]
                 : corsAllowedOrigins.split("\\s*,\\s*");
         var mapping = registry.addMapping("/api/**")
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true);
-        if (origins.length > 0) {
-            mapping.allowedOriginPatterns(origins);
+                .allowedHeaders("*");
+        if (allowAny) {
+            mapping.allowedOriginPatterns("*").allowCredentials(false);
         } else {
-            mapping.allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*");
+            mapping.allowCredentials(true);
+            if (origins.length > 0) {
+                mapping.allowedOriginPatterns(origins);
+            } else {
+                mapping.allowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*");
+            }
         }
     }
 }
