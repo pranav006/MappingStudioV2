@@ -1,9 +1,9 @@
 server:
   port: 8080
 
-# Access key: only users who know this can open the app (set APP_ACCESS_KEY env to override)
+# Access key: same key for BA, Dev, and Client (set APP_ACCESS_KEY env to override)
 app:
-  access-key: ${APP_ACCESS_KEY:mappingstudio}
+  access-key: ${APP_ACCESS_KEY:admin}
   # Isolated training: Excel import limits to prevent abuse/malware. No other code touches uploaded files.
   training:
     max-file-size-bytes: 5242880   # 5 MB (prevents zip bombs / oversized uploads)
