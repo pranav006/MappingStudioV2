@@ -53,8 +53,8 @@ import {
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
 
-// BACKEND API BASE
-const API = "http://localhost:8080/api";
+// BACKEND API BASE (set VITE_API_BASE in production, e.g. https://your-backend.herokuapp.com/api)
+const API = import.meta.env.VITE_API_BASE || "http://localhost:8080/api";
 
 // --- ENTERPRISE DESIGN TOKENS ---
 const THEME_TOKENS = {
