@@ -4,6 +4,8 @@ server:
 # Access key: same key for BA, Dev, and Client (set APP_ACCESS_KEY env to override)
 app:
   access-key: ${APP_ACCESS_KEY:admin}
+  # CORS: comma-separated origins (e.g. https://your-app.vercel.app). Default allows localhost only.
+  cors-allowed-origins: ${APP_CORS_ORIGINS:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000}
   # Isolated training: Excel import limits to prevent abuse/malware. No other code touches uploaded files.
   training:
     max-file-size-bytes: 5242880   # 5 MB (prevents zip bombs / oversized uploads)

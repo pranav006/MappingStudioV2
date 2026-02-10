@@ -205,7 +205,10 @@ function LoginScreen({ apiBase, onSuccess }) {
                 setError('Invalid access key');
             }
         } catch {
-            setError('Could not reach server');
+            const isLocal = apiBase.includes('localhost') || apiBase.includes('127.0.0.1');
+            setError(isLocal
+                ? 'Could not reach server. Is the backend running? (e.g. port 8080)'
+                : `Could not reach server at ${apiBase}. Check URL and CORS.`);
         } finally {
             setLoading(false);
         }
